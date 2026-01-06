@@ -1,0 +1,102 @@
+{
+  "name": "@adverant/nexus-plugin-compliance",
+  "version": "1.0.0",
+  "description": "Enterprise Compliance Engine for Nexus - Z-Inspection aligned qualitative assessment with 688+ controls across 6 frameworks",
+  "private": true,
+  "license": "UNLICENSED",
+  "author": {
+    "name": "Adverant",
+    "url": "https://adverant.ai"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adverant/Adverant-Nexus-Compliance-Plugin.git"
+  },
+  "nexusPlugin": {
+    "id": "compliance",
+    "name": "Enterprise Compliance Engine",
+    "description": "Z-Inspection aligned compliance assessment with 688+ controls across ISO 27001, GDPR, EU AI Act, NIS2, SOC 2, and ISO 27701",
+    "version": "1.0.0",
+    "category": "compliance",
+    "pricing": {
+      "model": "subscription",
+      "tiers": [
+        {
+          "name": "starter",
+          "price": 499,
+          "currency": "USD",
+          "interval": "month",
+          "features": ["3 frameworks", "100 controls", "Basic reporting"]
+        },
+        {
+          "name": "professional",
+          "price": 1499,
+          "currency": "USD",
+          "interval": "month",
+          "features": ["All 6 frameworks", "688+ controls", "Cross-framework analysis", "Z-Inspection integration"]
+        },
+        {
+          "name": "enterprise",
+          "price": "custom",
+          "currency": "USD",
+          "interval": "year",
+          "features": ["Everything in Professional", "Custom frameworks", "Dedicated support", "SLA", "On-premise deployment"]
+        }
+      ]
+    },
+    "permissions": [
+      "tenant:read",
+      "tenant:write",
+      "ai-systems:read",
+      "ai-systems:write",
+      "assessments:read",
+      "assessments:write",
+      "evidence:read",
+      "evidence:write"
+    ],
+    "dependencies": {
+      "nexus-core": ">=1.0.0",
+      "nexus-mageagent": ">=1.0.0",
+      "nexus-graphrag": ">=1.0.0"
+    },
+    "entrypoints": {
+      "backend": "./backend/dist/index.js",
+      "frontend": "./frontend/dist/index.js",
+      "migrations": "./backend/src/database/migrations"
+    },
+    "routes": {
+      "api": "/api/v1/plugins/compliance",
+      "ui": "/compliance"
+    }
+  },
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "cd backend && npm test",
+    "test:frontend": "cd frontend && npm test",
+    "typecheck": "npm run typecheck:backend && npm run typecheck:frontend",
+    "typecheck:backend": "cd backend && npm run typecheck",
+    "typecheck:frontend": "cd frontend && npm run typecheck",
+    "lint": "npm run lint:backend && npm run lint:frontend",
+    "lint:backend": "cd backend && npm run lint",
+    "lint:frontend": "cd frontend && npm run lint"
+  },
+  "keywords": [
+    "nexus",
+    "plugin",
+    "compliance",
+    "gdpr",
+    "iso27001",
+    "eu-ai-act",
+    "nis2",
+    "soc2",
+    "z-inspection",
+    "enterprise"
+  ]
+}

@@ -1,0 +1,668 @@
+-- Migration: 005_seed_ai_act_controls.sql
+-- Description: Comprehensive EU AI Act (Regulation 2024/1689) controls
+-- Total Controls: 89 controls covering all AI Act requirements
+-- Author: Nexus Compliance Engine
+-- Date: 2025-01-01
+
+-- First, ensure the EU AI Act framework exists
+INSERT INTO compliance_frameworks (id, name, version, description, category, jurisdiction, effective_date, status)
+VALUES (
+  'eu-ai-act',
+  'EU AI Act',
+  '2024/1689',
+  'EU Regulation laying down harmonized rules on artificial intelligence. Establishes risk-based approach to AI regulation with prohibitions on certain AI practices, requirements for high-risk AI systems, and transparency obligations.',
+  'ai-governance',
+  'EU',
+  '2024-08-01',
+  'active'
+) ON CONFLICT (id) DO UPDATE SET
+  description = EXCLUDED.description,
+  version = EXCLUDED.version,
+  status = EXCLUDED.status;
+
+-- ============================================================================
+-- TITLE I: GENERAL PROVISIONS (Articles 1-4) - 5 Controls
+-- ============================================================================
+
+INSERT INTO compliance_controls (id, framework_id, control_number, domain, subdomain, title, description, objective, implementation_guidance, risk_category, implementation_priority, automated_test_available, ai_assessment_prompt)
+VALUES
+('AIACT-1.1', 'eu-ai-act', '1.1', 'General Provisions', 'Scope',
+ 'AI System Identification',
+ 'Identify and maintain an inventory of all AI systems developed, deployed, or used by the organization that fall within the scope of the AI Act.',
+ 'To establish comprehensive understanding of AI systems subject to regulation.',
+ 'Create AI system registry. Define criteria for AI system identification. Conduct periodic discovery audits. Include third-party AI systems used.',
+ 'critical', 100, true,
+ 'Evaluate AI system identification practices. Check: 1) Is there an AI system inventory? 2) Are all AI systems documented? 3) Are third-party AI systems included? 4) Is discovery ongoing?'),
+
+('AIACT-1.2', 'eu-ai-act', '1.2', 'General Provisions', 'Definitions',
+ 'AI System Classification',
+ 'Classify each AI system according to AI Act definitions: AI system, general-purpose AI model, high-risk AI system, biometric systems, etc.',
+ 'To correctly categorize AI systems for applicable requirements.',
+ 'Apply AI Act definitions to each system. Document classification rationale. Review classifications when systems change.',
+ 'critical', 99, true,
+ 'Assess AI system classification. Verify: 1) Are systems classified per AI Act definitions? 2) Is classification rationale documented? 3) Are classifications reviewed when systems change?'),
+
+('AIACT-3.1', 'eu-ai-act', '3.1', 'General Provisions', 'Roles',
+ 'Role Determination',
+ 'Determine organizational role(s) under the AI Act: provider, deployer, importer, distributor, or affected person.',
+ 'To identify applicable obligations based on role.',
+ 'Assess role for each AI system. One organization may have different roles for different systems. Document role determinations.',
+ 'high', 98, true,
+ 'Evaluate role determination. Check: 1) Is role determined for each AI system? 2) Are multiple roles considered? 3) Are determinations documented?'),
+
+('AIACT-4.1', 'eu-ai-act', '4.1', 'General Provisions', 'AI Literacy',
+ 'AI Literacy Measures',
+ 'Ensure staff dealing with AI systems have sufficient AI literacy, considering their technical knowledge, experience, education, and context of use.',
+ 'To ensure personnel can work with AI systems responsibly.',
+ 'Assess AI literacy needs. Develop training programs. Provide ongoing education. Document training completion.',
+ 'high', 93, true,
+ 'Assess AI literacy measures. Verify: 1) Are literacy needs assessed? 2) Is training provided? 3) Is training ongoing? 4) Is completion documented?'),
+
+-- ============================================================================
+-- TITLE II: PROHIBITED AI PRACTICES (Article 5) - 8 Controls
+-- ============================================================================
+
+('AIACT-5.1', 'eu-ai-act', '5.1.a', 'Prohibited Practices', 'Manipulation',
+ 'Subliminal Manipulation Prohibition',
+ 'Ensure no AI systems use subliminal techniques beyond a person''s consciousness to materially distort behavior causing significant harm.',
+ 'To prevent harmful manipulative AI practices.',
+ 'Review AI systems for manipulative techniques. Assess impact on user behavior. Prohibit systems with subliminal manipulation. Document assessments.',
+ 'critical', 100, false,
+ 'Evaluate prohibition compliance. Check: 1) Are AI systems reviewed for manipulation? 2) Are subliminal techniques identified? 3) Are harmful systems prohibited?'),
+
+('AIACT-5.2', 'eu-ai-act', '5.1.b', 'Prohibited Practices', 'Exploitation',
+ 'Vulnerability Exploitation Prohibition',
+ 'Ensure no AI systems exploit vulnerabilities of specific groups (age, disability, social/economic situation) to distort behavior causing significant harm.',
+ 'To prevent AI exploitation of vulnerable groups.',
+ 'Identify AI systems interacting with vulnerable groups. Assess for exploitation potential. Implement safeguards. Prohibit exploitative systems.',
+ 'critical', 100, false,
+ 'Assess exploitation prohibition. Verify: 1) Are vulnerable group interactions identified? 2) Is exploitation potential assessed? 3) Are exploitative systems prohibited?'),
+
+('AIACT-5.3', 'eu-ai-act', '5.1.c', 'Prohibited Practices', 'Social Scoring',
+ 'Social Scoring Prohibition',
+ 'Ensure no AI systems evaluate or classify persons based on social behavior or personality characteristics leading to detrimental or unfavorable treatment.',
+ 'To prevent harmful social scoring practices.',
+ 'Identify any social scoring AI systems. Assess for prohibited characteristics. Prohibit systems meeting prohibition criteria.',
+ 'critical', 100, false,
+ 'Evaluate social scoring prohibition. Check: 1) Are social scoring systems identified? 2) Do any meet prohibition criteria? 3) Are prohibited systems eliminated?'),
+
+('AIACT-5.4', 'eu-ai-act', '5.1.d', 'Prohibited Practices', 'Predictive Policing',
+ 'Individual Predictive Policing Prohibition',
+ 'Ensure no AI systems assess risk of natural persons committing criminal offenses based solely on profiling or personality traits.',
+ 'To prevent discriminatory predictive policing.',
+ 'Identify AI systems assessing criminal risk. Ensure assessments are not based solely on profiling. Document compliance.',
+ 'critical', 100, false,
+ 'Assess predictive policing compliance. Verify: 1) Are criminal risk AI systems identified? 2) Are assessments based on more than profiling? 3) Is compliance documented?'),
+
+('AIACT-5.5', 'eu-ai-act', '5.1.e', 'Prohibited Practices', 'Facial Recognition',
+ 'Untargeted Facial Recognition Database Prohibition',
+ 'Ensure no AI systems create or expand facial recognition databases through untargeted scraping from internet or CCTV.',
+ 'To prevent mass surveillance through facial recognition.',
+ 'Identify facial recognition systems. Verify data sources. Prohibit untargeted scraping. Document data provenance.',
+ 'critical', 100, false,
+ 'Evaluate facial recognition prohibition. Check: 1) Are facial recognition systems identified? 2) Are data sources verified? 3) Is untargeted scraping prohibited?'),
+
+('AIACT-5.6', 'eu-ai-act', '5.1.f', 'Prohibited Practices', 'Emotion Recognition',
+ 'Workplace/Education Emotion Recognition Prohibition',
+ 'Ensure no AI systems infer emotions in workplace or educational settings, except for safety or medical reasons.',
+ 'To prevent inappropriate emotion recognition in sensitive contexts.',
+ 'Identify emotion recognition systems. Verify use contexts. Prohibit in workplace/education unless excepted. Document exemptions.',
+ 'critical', 99, false,
+ 'Assess emotion recognition compliance. Verify: 1) Are emotion systems identified? 2) Are workplace/education uses prohibited? 3) Are exemptions documented?'),
+
+('AIACT-5.7', 'eu-ai-act', '5.1.g', 'Prohibited Practices', 'Biometric Categorization',
+ 'Sensitive Biometric Categorization Prohibition',
+ 'Ensure no AI systems categorize persons based on biometric data to deduce or infer race, political opinions, religion, sexual orientation, etc.',
+ 'To prevent discriminatory biometric categorization.',
+ 'Identify biometric categorization systems. Verify categorization purposes. Prohibit sensitive attribute inference.',
+ 'critical', 100, false,
+ 'Evaluate biometric categorization. Check: 1) Are categorization systems identified? 2) Are sensitive inferences made? 3) Are prohibited uses eliminated?'),
+
+('AIACT-5.8', 'eu-ai-act', '5.1.h', 'Prohibited Practices', 'Real-time Biometrics',
+ 'Real-Time Remote Biometric Identification Restrictions',
+ 'Ensure real-time remote biometric identification in publicly accessible spaces complies with strict limitations and authorization requirements.',
+ 'To control law enforcement biometric identification.',
+ 'Identify real-time biometric systems. Verify authorization for public space use. Document law enforcement exemptions with proper authorization.',
+ 'critical', 99, false,
+ 'Assess real-time biometric compliance. Verify: 1) Are systems identified? 2) Is authorization verified? 3) Are exemptions properly documented?'),
+
+-- ============================================================================
+-- TITLE III: HIGH-RISK AI SYSTEMS (Articles 6-51) - 45 Controls
+-- ============================================================================
+
+-- Chapter 1: Classification of AI Systems as High-Risk
+('AIACT-6.1', 'eu-ai-act', '6.1', 'High-Risk', 'Classification',
+ 'Annex I High-Risk Classification',
+ 'Classify AI systems as high-risk if they are products or safety components of products covered by Union harmonization legislation listed in Annex I.',
+ 'To identify high-risk AI systems under harmonization legislation.',
+ 'Review AI systems against Annex I legislation list. Include machinery, toys, medical devices, etc. Document classification.',
+ 'critical', 97, true,
+ 'Assess Annex I classification. Verify: 1) Are systems reviewed against Annex I? 2) Are product safety components identified? 3) Is classification documented?'),
+
+('AIACT-6.2', 'eu-ai-act', '6.2', 'High-Risk', 'Classification',
+ 'Annex III High-Risk Classification',
+ 'Classify AI systems as high-risk if falling within use cases listed in Annex III (biometrics, critical infrastructure, education, employment, essential services, law enforcement, migration, justice).',
+ 'To identify high-risk AI systems by use case.',
+ 'Review AI systems against Annex III categories. Document use case classification. Apply requirements accordingly.',
+ 'critical', 97, true,
+ 'Evaluate Annex III classification. Check: 1) Are systems reviewed against Annex III? 2) Are use cases correctly classified? 3) Is classification documented?'),
+
+('AIACT-6.3', 'eu-ai-act', '6.3', 'High-Risk', 'Exceptions',
+ 'High-Risk Exception Assessment',
+ 'Assess whether high-risk classification exceptions apply: narrow procedural tasks, improving results, preparatory tasks, detecting decision patterns, or no profiling.',
+ 'To correctly apply high-risk exceptions.',
+ 'For each potential high-risk system, assess exception criteria. Document exception rationale. Conduct self-assessment for Annex III systems.',
+ 'high', 94, false,
+ 'Assess exception application. Verify: 1) Are exceptions assessed? 2) Is rationale documented? 3) Is self-assessment conducted for Annex III?'),
+
+-- Chapter 2: Requirements for High-Risk AI Systems
+('AIACT-9.1', 'eu-ai-act', '9.1', 'High-Risk', 'Risk Management',
+ 'Risk Management System Establishment',
+ 'Establish, implement, document, and maintain a risk management system for each high-risk AI system.',
+ 'To ensure systematic risk management for high-risk AI.',
+ 'Create risk management framework for each high-risk system. Define risk identification, analysis, evaluation, and treatment processes. Document throughout lifecycle.',
+ 'critical', 98, true,
+ 'Evaluate risk management system. Check: 1) Is RMS established for each high-risk system? 2) Is it documented? 3) Is it maintained throughout lifecycle?'),
+
+('AIACT-9.2', 'eu-ai-act', '9.2', 'High-Risk', 'Risk Management',
+ 'Risk Identification and Analysis',
+ 'Identify and analyze known and reasonably foreseeable risks associated with each high-risk AI system.',
+ 'To comprehensively identify AI system risks.',
+ 'Conduct systematic risk identification. Include foreseeable misuse. Analyze risk likelihood and severity. Document risk register.',
+ 'high', 96, true,
+ 'Assess risk identification. Verify: 1) Are risks systematically identified? 2) Is foreseeable misuse included? 3) Is analysis documented?'),
+
+('AIACT-9.3', 'eu-ai-act', '9.3', 'High-Risk', 'Risk Management',
+ 'Risk Estimation and Evaluation',
+ 'Estimate and evaluate risks that may emerge when the high-risk AI system is used in accordance with its intended purpose and under conditions of reasonably foreseeable misuse.',
+ 'To evaluate AI system risks under various conditions.',
+ 'Develop risk evaluation methodology. Assess intended use risks. Assess misuse risks. Document evaluation results.',
+ 'high', 95, false,
+ 'Evaluate risk assessment. Check: 1) Is methodology documented? 2) Are intended use risks assessed? 3) Are misuse risks assessed?'),
+
+('AIACT-9.4', 'eu-ai-act', '9.4', 'High-Risk', 'Risk Management',
+ 'Risk Mitigation Measures',
+ 'Adopt suitable risk management measures to eliminate or reduce risks as far as possible through design or technical safeguards.',
+ 'To implement effective risk controls.',
+ 'Design systems to eliminate risks. Implement technical safeguards. Provide residual risk information. Document mitigation measures.',
+ 'critical', 96, true,
+ 'Assess risk mitigation. Verify: 1) Are design measures implemented? 2) Are technical safeguards in place? 3) Is residual risk communicated?'),
+
+('AIACT-9.5', 'eu-ai-act', '9.5', 'High-Risk', 'Risk Management',
+ 'Testing for Risk Management',
+ 'Test high-risk AI systems to identify the most appropriate and targeted risk management measures.',
+ 'To validate risk management effectiveness through testing.',
+ 'Define testing procedures. Test against intended purpose. Test against foreseeable misuse. Document test results.',
+ 'high', 94, true,
+ 'Evaluate testing practices. Check: 1) Are testing procedures defined? 2) Is intended purpose tested? 3) Is misuse tested? 4) Are results documented?'),
+
+('AIACT-10.1', 'eu-ai-act', '10.1', 'High-Risk', 'Data Governance',
+ 'Training Data Governance',
+ 'Implement data governance and management practices for training, validation, and testing data sets.',
+ 'To ensure AI training data quality and appropriateness.',
+ 'Define data governance procedures. Cover data collection, preparation, labeling, cleaning. Document data pipeline.',
+ 'critical', 97, true,
+ 'Assess data governance. Verify: 1) Are governance procedures defined? 2) Do they cover the full data pipeline? 3) Are procedures documented?'),
+
+('AIACT-10.2', 'eu-ai-act', '10.2', 'High-Risk', 'Data Governance',
+ 'Data Quality Requirements',
+ 'Ensure training, validation, and testing data sets are relevant, sufficiently representative, and to the best extent possible free of errors and complete.',
+ 'To ensure AI data quality.',
+ 'Define data quality criteria. Implement quality checks. Address data gaps and biases. Document quality assessments.',
+ 'high', 95, true,
+ 'Evaluate data quality. Check: 1) Are quality criteria defined? 2) Are quality checks implemented? 3) Are gaps/biases addressed? 4) Are assessments documented?'),
+
+('AIACT-10.3', 'eu-ai-act', '10.3', 'High-Risk', 'Data Governance',
+ 'Data Set Properties',
+ 'Ensure data sets take into account characteristics specific to the geographic, contextual, behavioral, or functional setting within which the high-risk AI system is intended to be used.',
+ 'To ensure AI data appropriateness for deployment context.',
+ 'Analyze deployment context. Source data appropriate to context. Validate contextual relevance. Document data-context alignment.',
+ 'high', 93, false,
+ 'Assess data appropriateness. Verify: 1) Is deployment context analyzed? 2) Is data sourced appropriately? 3) Is relevance validated?'),
+
+('AIACT-10.4', 'eu-ai-act', '10.4', 'High-Risk', 'Data Governance',
+ 'Bias Detection and Correction',
+ 'Examine training, validation, and testing data sets for possible biases and implement appropriate measures to detect, prevent, and mitigate those biases.',
+ 'To ensure fair and unbiased AI systems.',
+ 'Implement bias detection tools. Conduct regular bias audits. Implement bias mitigation techniques. Document bias assessments and corrections.',
+ 'critical', 96, true,
+ 'Evaluate bias management. Check: 1) Is bias detection implemented? 2) Are regular audits conducted? 3) Is mitigation applied? 4) Are assessments documented?'),
+
+('AIACT-10.5', 'eu-ai-act', '10.5', 'High-Risk', 'Data Governance',
+ 'Special Category Data Processing',
+ 'Where necessary for bias detection and correction, process special categories of personal data subject to appropriate safeguards.',
+ 'To enable bias detection while protecting sensitive data.',
+ 'Assess need for special category data processing. Implement enhanced safeguards. Document necessity and safeguards.',
+ 'high', 91, false,
+ 'Assess special category processing. Verify: 1) Is necessity assessed? 2) Are safeguards implemented? 3) Is processing documented?'),
+
+('AIACT-11.1', 'eu-ai-act', '11.1', 'High-Risk', 'Technical Documentation',
+ 'Technical Documentation Creation',
+ 'Draw up technical documentation before the high-risk AI system is placed on the market or put into service, and keep it up to date.',
+ 'To ensure comprehensive technical documentation.',
+ 'Create technical documentation per Annex IV requirements. Update with changes. Retain for 10 years after market placement.',
+ 'critical', 97, true,
+ 'Evaluate technical documentation. Check: 1) Is documentation created before market? 2) Does it meet Annex IV requirements? 3) Is it kept up to date?'),
+
+('AIACT-11.2', 'eu-ai-act', '11.2', 'High-Risk', 'Technical Documentation',
+ 'Documentation Content - General Description',
+ 'Include in technical documentation: general description, intended purpose, versions, interaction with hardware/software, and instructions for use.',
+ 'To document AI system characteristics comprehensively.',
+ 'Document system description. Define intended purpose precisely. List dependencies and interfaces. Create clear instructions.',
+ 'high', 94, true,
+ 'Assess general documentation. Verify: 1) Is description complete? 2) Is purpose defined? 3) Are dependencies listed? 4) Are instructions clear?'),
+
+('AIACT-11.3', 'eu-ai-act', '11.3', 'High-Risk', 'Technical Documentation',
+ 'Documentation Content - Development Elements',
+ 'Include in technical documentation: design specifications, development process description, training methodologies, and decisions about training data.',
+ 'To document AI development process.',
+ 'Document design decisions. Describe development process. Explain training methodology. Record data decisions.',
+ 'high', 93, true,
+ 'Evaluate development documentation. Check: 1) Are design specs documented? 2) Is development process described? 3) Is training methodology explained?'),
+
+('AIACT-11.4', 'eu-ai-act', '11.4', 'High-Risk', 'Technical Documentation',
+ 'Documentation Content - Validation and Testing',
+ 'Include in technical documentation: testing and validation procedures and outcomes, including applicable metrics.',
+ 'To document AI system testing.',
+ 'Document testing procedures. Record test results. Include relevant metrics. Document validation outcomes.',
+ 'high', 94, true,
+ 'Assess testing documentation. Verify: 1) Are procedures documented? 2) Are results recorded? 3) Are metrics included?'),
+
+('AIACT-12.1', 'eu-ai-act', '12.1', 'High-Risk', 'Record-Keeping',
+ 'Automatic Logging Capability',
+ 'Design high-risk AI systems to automatically record logs during operation to the extent such logging is appropriate to the intended purpose.',
+ 'To enable traceability of AI system operation.',
+ 'Implement logging functionality. Capture events per Annex IV. Ensure log integrity. Retain logs appropriately.',
+ 'critical', 96, true,
+ 'Evaluate logging capability. Check: 1) Is automatic logging implemented? 2) Are Annex IV requirements met? 3) Is log integrity ensured? 4) Are logs retained?'),
+
+('AIACT-12.2', 'eu-ai-act', '12.2', 'High-Risk', 'Record-Keeping',
+ 'Logging Traceability',
+ 'Ensure logging enables tracing the AI system''s operation throughout its lifecycle.',
+ 'To enable lifecycle traceability.',
+ 'Design logs for traceability. Include identifiable events. Enable reconstruction of decisions. Document log structure.',
+ 'high', 93, true,
+ 'Assess logging traceability. Verify: 1) Do logs enable tracing? 2) Are events identifiable? 3) Can decisions be reconstructed?'),
+
+('AIACT-13.1', 'eu-ai-act', '13.1', 'High-Risk', 'Transparency',
+ 'Transparency for Deployers',
+ 'Design high-risk AI systems to enable deployers to interpret the system''s output and use it appropriately.',
+ 'To ensure deployer can understand AI system operation.',
+ 'Provide clear output interpretation guidance. Include capability and limitation information. Enable appropriate use.',
+ 'critical', 95, true,
+ 'Evaluate deployer transparency. Check: 1) Is output interpretable? 2) Is guidance provided? 3) Are limitations communicated?'),
+
+('AIACT-13.2', 'eu-ai-act', '13.2', 'High-Risk', 'Transparency',
+ 'Instructions for Use',
+ 'Provide high-risk AI systems with instructions for use including: provider identity, system characteristics, intended purpose, performance, limitations, human oversight, maintenance requirements.',
+ 'To ensure comprehensive user guidance.',
+ 'Create instructions meeting Annex IV requirements. Cover all required elements. Write in clear, accessible language.',
+ 'high', 94, true,
+ 'Assess instructions for use. Verify all required elements are present and clear: identity, characteristics, purpose, performance, limitations, oversight, maintenance.'),
+
+('AIACT-14.1', 'eu-ai-act', '14.1', 'High-Risk', 'Human Oversight',
+ 'Human Oversight Design',
+ 'Design high-risk AI systems to be effectively overseen by natural persons during the period of use.',
+ 'To enable effective human oversight of AI systems.',
+ 'Design for human oversight. Enable intervention capability. Prevent over-reliance. Document oversight mechanisms.',
+ 'critical', 97, true,
+ 'Evaluate oversight design. Check: 1) Is human oversight enabled by design? 2) Can humans intervene? 3) Is over-reliance prevented?'),
+
+('AIACT-14.2', 'eu-ai-act', '14.2', 'High-Risk', 'Human Oversight',
+ 'Oversight Capability',
+ 'Enable the human overseers to understand the capabilities and limitations of the high-risk AI system, monitor operation, and detect anomalies.',
+ 'To ensure overseers can effectively monitor AI systems.',
+ 'Provide capability/limitation information. Enable operational monitoring. Implement anomaly detection. Train overseers.',
+ 'high', 95, true,
+ 'Assess oversight capability. Verify: 1) Are capabilities/limitations understood? 2) Is monitoring enabled? 3) Is anomaly detection possible?'),
+
+('AIACT-14.3', 'eu-ai-act', '14.3', 'High-Risk', 'Human Oversight',
+ 'Intervention Capability',
+ 'Enable human overseers to decide not to use the system, override or reverse the output, and intervene in operation or stop the system.',
+ 'To ensure human control over AI systems.',
+ 'Implement non-use option. Enable output override. Provide intervention controls. Implement stop functionality.',
+ 'critical', 96, true,
+ 'Evaluate intervention capability. Check: 1) Can system be not used? 2) Can output be overridden? 3) Can system be stopped?'),
+
+('AIACT-15.1', 'eu-ai-act', '15.1', 'High-Risk', 'Accuracy and Robustness',
+ 'Accuracy, Robustness, and Cybersecurity',
+ 'Design high-risk AI systems to achieve an appropriate level of accuracy, robustness, and cybersecurity throughout their lifecycle.',
+ 'To ensure reliable and secure AI systems.',
+ 'Define accuracy requirements. Implement robustness measures. Apply cybersecurity controls. Maintain throughout lifecycle.',
+ 'critical', 97, true,
+ 'Assess accuracy/robustness/security. Verify: 1) Are accuracy requirements defined and met? 2) Is robustness ensured? 3) Is cybersecurity implemented?'),
+
+('AIACT-15.2', 'eu-ai-act', '15.2', 'High-Risk', 'Accuracy and Robustness',
+ 'Accuracy Levels and Metrics',
+ 'Declare accuracy levels and relevant accuracy metrics in instructions for use.',
+ 'To provide transparent accuracy information.',
+ 'Define accuracy metrics. Measure actual performance. Declare in instructions. Update as appropriate.',
+ 'high', 93, true,
+ 'Evaluate accuracy declaration. Check: 1) Are metrics defined? 2) Is performance measured? 3) Is it declared in instructions?'),
+
+('AIACT-15.3', 'eu-ai-act', '15.3', 'High-Risk', 'Accuracy and Robustness',
+ 'Robustness to Errors and Inconsistencies',
+ 'Design high-risk AI systems to be resilient to errors, faults, or inconsistencies within the system or its environment.',
+ 'To ensure AI system reliability.',
+ 'Implement error handling. Design for fault tolerance. Handle environmental inconsistencies. Test robustness.',
+ 'high', 94, true,
+ 'Assess robustness. Verify: 1) Is error handling implemented? 2) Is fault tolerance designed? 3) Is robustness tested?'),
+
+('AIACT-15.4', 'eu-ai-act', '15.4', 'High-Risk', 'Accuracy and Robustness',
+ 'Adversarial Robustness',
+ 'Design high-risk AI systems to be resilient against attempts to alter their use or performance by exploiting system vulnerabilities.',
+ 'To protect AI systems from adversarial attacks.',
+ 'Assess adversarial vulnerabilities. Implement defenses. Test against adversarial inputs. Monitor for attacks.',
+ 'high', 95, true,
+ 'Evaluate adversarial robustness. Check: 1) Are vulnerabilities assessed? 2) Are defenses implemented? 3) Is testing conducted?'),
+
+('AIACT-15.5', 'eu-ai-act', '15.5', 'High-Risk', 'Accuracy and Robustness',
+ 'Cybersecurity Measures',
+ 'Implement cybersecurity measures appropriate to the relevant risks, including protection of underlying assets, data, and communication.',
+ 'To secure AI systems against cyber threats.',
+ 'Implement technical cybersecurity measures. Protect AI models and data. Secure communications. Monitor for threats.',
+ 'critical', 96, true,
+ 'Assess cybersecurity. Verify: 1) Are measures appropriate to risk? 2) Are assets protected? 3) Is monitoring in place?'),
+
+-- Chapter 3: Obligations of Providers and Deployers
+('AIACT-16.1', 'eu-ai-act', '16.1', 'Provider Obligations', 'Compliance',
+ 'Provider Compliance Obligation',
+ 'As a provider, ensure high-risk AI systems comply with requirements before placing on market or putting into service.',
+ 'To ensure market-ready AI systems meet all requirements.',
+ 'Verify compliance with all Chapter 2 requirements. Document compliance evidence. Conduct conformity assessment.',
+ 'critical', 98, true,
+ 'Assess provider compliance. Verify: 1) Is compliance verified? 2) Is evidence documented? 3) Is conformity assessment conducted?'),
+
+('AIACT-16.2', 'eu-ai-act', '16.2', 'Provider Obligations', 'Quality Management',
+ 'Quality Management System',
+ 'Implement a quality management system that ensures compliance with the AI Act.',
+ 'To systematically ensure AI Act compliance.',
+ 'Establish QMS covering all AI Act requirements. Document policies and procedures. Implement controls. Conduct internal audits.',
+ 'critical', 97, true,
+ 'Evaluate QMS. Check: 1) Is QMS established? 2) Does it cover AI Act requirements? 3) Are policies documented? 4) Are audits conducted?'),
+
+('AIACT-16.3', 'eu-ai-act', '16.3', 'Provider Obligations', 'Documentation',
+ 'Technical Documentation Maintenance',
+ 'Keep technical documentation at the disposal of national competent authorities for 10 years after the AI system is placed on market.',
+ 'To enable regulatory verification.',
+ 'Retain documentation for 10 years. Ensure accessibility. Update with changes. Provide to authorities on request.',
+ 'high', 93, true,
+ 'Assess documentation retention. Verify: 1) Is 10-year retention ensured? 2) Is documentation accessible? 3) Can it be provided on request?'),
+
+('AIACT-16.4', 'eu-ai-act', '16.4', 'Provider Obligations', 'Conformity',
+ 'Conformity Assessment',
+ 'Ensure high-risk AI systems undergo relevant conformity assessment procedure before placing on market or putting into service.',
+ 'To verify AI system conformity.',
+ 'Identify applicable conformity assessment procedure. Conduct assessment. Document results. Obtain certification if required.',
+ 'critical', 98, true,
+ 'Evaluate conformity assessment. Check: 1) Is correct procedure identified? 2) Is assessment conducted? 3) Are results documented?'),
+
+('AIACT-16.5', 'eu-ai-act', '16.5', 'Provider Obligations', 'Conformity',
+ 'EU Declaration of Conformity',
+ 'Draw up an EU Declaration of Conformity for each high-risk AI system.',
+ 'To formally declare AI system compliance.',
+ 'Create declaration per Annex V requirements. Include all required elements. Sign by authorized representative. Update as needed.',
+ 'critical', 97, true,
+ 'Assess declaration. Verify: 1) Is declaration created per Annex V? 2) Are all elements included? 3) Is it properly signed?'),
+
+('AIACT-16.6', 'eu-ai-act', '16.6', 'Provider Obligations', 'Marking',
+ 'CE Marking',
+ 'Affix CE marking to high-risk AI systems to indicate conformity with the AI Act.',
+ 'To visibly demonstrate AI system conformity.',
+ 'Apply CE marking correctly. Ensure visibility and legibility. Affix before placing on market.',
+ 'high', 94, true,
+ 'Evaluate CE marking. Check: 1) Is CE marking affixed? 2) Is it visible and legible? 3) Is it applied before market placement?'),
+
+('AIACT-16.7', 'eu-ai-act', '16.7', 'Provider Obligations', 'Registration',
+ 'EU Database Registration',
+ 'Register high-risk AI systems in the EU database before placing on market or putting into service.',
+ 'To enable regulatory oversight and public transparency.',
+ 'Register in EU database per Article 71. Include all required information. Update registration with changes.',
+ 'critical', 96, true,
+ 'Assess database registration. Verify: 1) Is system registered in EU database? 2) Is registration complete? 3) Is it kept updated?'),
+
+('AIACT-16.8', 'eu-ai-act', '16.8', 'Provider Obligations', 'Corrective Action',
+ 'Corrective Actions',
+ 'Take necessary corrective actions when the high-risk AI system is not in conformity with AI Act requirements.',
+ 'To ensure non-conformity is addressed.',
+ 'Establish non-conformity identification process. Define corrective action procedures. Implement corrections promptly. Document actions.',
+ 'high', 95, true,
+ 'Evaluate corrective action process. Check: 1) Is non-conformity identified? 2) Are actions defined? 3) Are corrections implemented promptly?'),
+
+('AIACT-16.9', 'eu-ai-act', '16.9', 'Provider Obligations', 'Notification',
+ 'Authority Notification of Non-Conformity',
+ 'Inform competent national authorities about non-conformity and corrective actions taken.',
+ 'To ensure regulatory awareness of issues.',
+ 'Notify authorities of significant non-conformity. Provide corrective action details. Cooperate with authority requests.',
+ 'high', 92, true,
+ 'Assess authority notification. Verify: 1) Are authorities notified? 2) Are corrective actions reported? 3) Is cooperation provided?'),
+
+('AIACT-26.1', 'eu-ai-act', '26.1', 'Deployer Obligations', 'Use',
+ 'Deployer Appropriate Use',
+ 'As a deployer, use high-risk AI systems in accordance with instructions for use and ensure human oversight by persons with competence, training, and authority.',
+ 'To ensure proper deployment and oversight.',
+ 'Follow instructions for use. Assign competent overseers. Provide training. Define authority for oversight.',
+ 'critical', 96, true,
+ 'Assess deployer use. Verify: 1) Are instructions followed? 2) Are overseers competent? 3) Is training provided? 4) Is authority defined?'),
+
+('AIACT-26.2', 'eu-ai-act', '26.2', 'Deployer Obligations', 'Monitoring',
+ 'Deployer Monitoring',
+ 'Monitor operation of high-risk AI system based on instructions for use, and inform provider of serious incidents and risks.',
+ 'To ensure ongoing operational oversight.',
+ 'Implement monitoring per instructions. Identify serious incidents. Report to provider. Document monitoring activities.',
+ 'high', 94, true,
+ 'Evaluate deployer monitoring. Check: 1) Is monitoring implemented? 2) Are incidents identified? 3) Is provider informed? 4) Is monitoring documented?'),
+
+('AIACT-26.3', 'eu-ai-act', '26.3', 'Deployer Obligations', 'Logs',
+ 'Log Retention',
+ 'Keep logs automatically generated by the high-risk AI system to the extent such logs are under their control.',
+ 'To maintain operational records.',
+ 'Retain system-generated logs. Store for appropriate period. Ensure log integrity. Make available to authorities.',
+ 'high', 92, true,
+ 'Assess log retention. Verify: 1) Are logs retained? 2) Is storage period appropriate? 3) Is integrity ensured? 4) Can logs be provided to authorities?'),
+
+('AIACT-26.4', 'eu-ai-act', '26.4', 'Deployer Obligations', 'DPIA',
+ 'Deployer Data Protection Impact Assessment',
+ 'Prior to use, conduct a data protection impact assessment for high-risk AI systems processing personal data.',
+ 'To assess AI-related privacy risks.',
+ 'Conduct DPIA before deployment. Include AI-specific risks. Implement mitigations. Document assessment.',
+ 'high', 93, true,
+ 'Evaluate deployer DPIA. Check: 1) Is DPIA conducted before use? 2) Are AI-specific risks addressed? 3) Is assessment documented?'),
+
+('AIACT-26.5', 'eu-ai-act', '26.5', 'Deployer Obligations', 'Information',
+ 'Affected Person Information',
+ 'Inform natural persons that they are subject to use of a high-risk AI system.',
+ 'To ensure transparency to affected individuals.',
+ 'Provide clear notification. Include relevant information. Use appropriate communication channels. Document notifications.',
+ 'high', 91, true,
+ 'Assess affected person notification. Verify: 1) Is notification provided? 2) Is information clear? 3) Are channels appropriate?'),
+
+-- ============================================================================
+-- TITLE IV: TRANSPARENCY OBLIGATIONS (Articles 50-52) - 8 Controls
+-- ============================================================================
+
+('AIACT-50.1', 'eu-ai-act', '50.1', 'Transparency', 'Human Interaction',
+ 'AI Interaction Disclosure',
+ 'Ensure persons interacting with AI systems are informed they are interacting with an AI system, unless obvious from circumstances.',
+ 'To enable informed interaction with AI.',
+ 'Implement disclosure mechanisms. Provide clear notification. Consider context for obviousness. Document approach.',
+ 'high', 94, true,
+ 'Assess AI interaction disclosure. Verify: 1) Is disclosure provided? 2) Is it clear? 3) Is context considered? 4) Is approach documented?'),
+
+('AIACT-50.2', 'eu-ai-act', '50.2', 'Transparency', 'Emotion Recognition',
+ 'Emotion Recognition Notification',
+ 'Inform natural persons exposed to emotion recognition or biometric categorization systems about their operation.',
+ 'To ensure awareness of emotion/biometric analysis.',
+ 'Notify affected persons. Explain system operation. Provide opt-out where applicable. Document notifications.',
+ 'high', 93, true,
+ 'Evaluate emotion system notification. Check: 1) Are persons notified? 2) Is operation explained? 3) Is opt-out provided where applicable?'),
+
+('AIACT-50.3', 'eu-ai-act', '50.3', 'Transparency', 'Deep Fakes',
+ 'Synthetic Content Disclosure',
+ 'Label AI-generated or manipulated content (deep fakes) in a machine-readable manner and disclose artificial origin.',
+ 'To prevent deception through synthetic content.',
+ 'Implement machine-readable labeling. Disclose artificial origin. Apply to text, audio, image, video. Document approach.',
+ 'high', 95, true,
+ 'Assess synthetic content labeling. Verify: 1) Is machine-readable labeling applied? 2) Is origin disclosed? 3) Does it cover all content types?'),
+
+('AIACT-50.4', 'eu-ai-act', '50.4', 'Transparency', 'Content Generation',
+ 'AI-Generated Content Labeling',
+ 'Where content forms part of evidently artistic, creative, satirical, or similar work, disclose in appropriate manner.',
+ 'To balance transparency with creative expression.',
+ 'Assess content type. Apply appropriate disclosure. Consider artistic context. Document approach.',
+ 'medium', 88, false,
+ 'Evaluate creative content disclosure. Check: 1) Is content type assessed? 2) Is disclosure appropriate? 3) Is context considered?'),
+
+-- ============================================================================
+-- TITLE V: GENERAL-PURPOSE AI MODELS (Articles 53-56) - 12 Controls
+-- ============================================================================
+
+('AIACT-53.1', 'eu-ai-act', '53.1', 'GPAI', 'Provider Obligations',
+ 'GPAI Technical Documentation',
+ 'Draw up and keep up to date technical documentation of the general-purpose AI model.',
+ 'To document GPAI model characteristics.',
+ 'Create documentation per Annex XI. Cover training and testing. Document capabilities and limitations. Update with changes.',
+ 'critical', 96, true,
+ 'Assess GPAI documentation. Verify: 1) Is documentation per Annex XI? 2) Is training/testing covered? 3) Is it kept updated?'),
+
+('AIACT-53.2', 'eu-ai-act', '53.2', 'GPAI', 'Provider Obligations',
+ 'GPAI Downstream Provider Information',
+ 'Provide downstream providers with information and documentation enabling compliance with their obligations.',
+ 'To enable downstream compliance.',
+ 'Prepare downstream provider documentation. Include integration guidance. Provide capability and limitation information. Update as needed.',
+ 'high', 94, true,
+ 'Evaluate downstream information. Check: 1) Is documentation provided? 2) Is guidance included? 3) Is information sufficient for compliance?'),
+
+('AIACT-53.3', 'eu-ai-act', '53.3', 'GPAI', 'Provider Obligations',
+ 'GPAI Copyright Compliance',
+ 'Implement a policy to comply with Union copyright law, including regarding the text and data mining exception.',
+ 'To ensure GPAI respects intellectual property.',
+ 'Develop copyright policy. Address training data sources. Respect opt-outs. Document compliance approach.',
+ 'high', 92, true,
+ 'Assess copyright compliance. Verify: 1) Is policy developed? 2) Are data sources addressed? 3) Are opt-outs respected?'),
+
+('AIACT-53.4', 'eu-ai-act', '53.4', 'GPAI', 'Provider Obligations',
+ 'GPAI Training Data Summary',
+ 'Draw up and make publicly available a sufficiently detailed summary of training data content.',
+ 'To provide transparency about training data.',
+ 'Create training data summary. Include relevant detail. Make publicly available. Follow template when provided.',
+ 'high', 91, true,
+ 'Evaluate training data summary. Check: 1) Is summary created? 2) Is it sufficiently detailed? 3) Is it publicly available?'),
+
+('AIACT-55.1', 'eu-ai-act', '55.1', 'GPAI', 'Systemic Risk',
+ 'Systemic Risk GPAI Identification',
+ 'Identify whether general-purpose AI models present systemic risks based on capabilities, impact, and compute thresholds.',
+ 'To identify GPAI requiring enhanced obligations.',
+ 'Assess against systemic risk criteria. Consider high-impact capability. Evaluate compute thresholds. Document assessment.',
+ 'critical', 95, true,
+ 'Assess systemic risk identification. Verify: 1) Are criteria applied? 2) Are capabilities considered? 3) Is assessment documented?'),
+
+('AIACT-55.2', 'eu-ai-act', '55.2', 'GPAI', 'Systemic Risk',
+ 'Systemic Risk Model Evaluation',
+ 'Perform model evaluation, including adversarial testing, to identify and mitigate systemic risks.',
+ 'To evaluate and address systemic risks.',
+ 'Conduct standardized evaluations. Perform adversarial testing. Identify systemic risks. Implement mitigations.',
+ 'critical', 96, true,
+ 'Evaluate model evaluation. Check: 1) Are standardized evaluations conducted? 2) Is adversarial testing performed? 3) Are risks mitigated?'),
+
+('AIACT-55.3', 'eu-ai-act', '55.3', 'GPAI', 'Systemic Risk',
+ 'Systemic Risk Assessment and Mitigation',
+ 'Assess and mitigate possible systemic risks at Union level, including sources of such risks.',
+ 'To address Union-level systemic risks.',
+ 'Assess systemic risks. Consider Union-level impacts. Implement proportionate mitigations. Document assessment and mitigations.',
+ 'high', 94, true,
+ 'Assess systemic risk management. Verify: 1) Are risks assessed? 2) Are Union impacts considered? 3) Are mitigations implemented?'),
+
+('AIACT-55.4', 'eu-ai-act', '55.4', 'GPAI', 'Systemic Risk',
+ 'Serious Incident Reporting',
+ 'Track, document, and report serious incidents and possible corrective measures to the AI Office and national authorities.',
+ 'To ensure incident transparency and response.',
+ 'Implement incident tracking. Document serious incidents. Report to authorities. Describe corrective measures.',
+ 'high', 93, true,
+ 'Evaluate incident reporting. Check: 1) Is tracking implemented? 2) Are incidents documented? 3) Is reporting to authorities conducted?'),
+
+('AIACT-55.5', 'eu-ai-act', '55.5', 'GPAI', 'Systemic Risk',
+ 'Cybersecurity Protection',
+ 'Ensure an adequate level of cybersecurity protection for the general-purpose AI model and physical infrastructure.',
+ 'To secure GPAI infrastructure.',
+ 'Implement cybersecurity measures. Protect model and infrastructure. Monitor for threats. Conduct security testing.',
+ 'critical', 95, true,
+ 'Assess GPAI cybersecurity. Verify: 1) Are measures implemented? 2) Are model and infrastructure protected? 3) Is monitoring in place?'),
+
+-- ============================================================================
+-- TITLE VIII: POST-MARKET MONITORING & INCIDENTS (Articles 72-73) - 6 Controls
+-- ============================================================================
+
+('AIACT-72.1', 'eu-ai-act', '72.1', 'Post-Market', 'Monitoring',
+ 'Post-Market Monitoring System',
+ 'Establish a post-market monitoring system to collect, document, and analyze data on performance throughout AI system lifetime.',
+ 'To ensure ongoing performance oversight.',
+ 'Create post-market monitoring plan. Collect performance data. Analyze for issues. Document findings.',
+ 'high', 94, true,
+ 'Evaluate post-market monitoring. Check: 1) Is system established? 2) Is data collected? 3) Is analysis conducted? 4) Are findings documented?'),
+
+('AIACT-72.2', 'eu-ai-act', '72.2', 'Post-Market', 'Monitoring',
+ 'Post-Market Monitoring Plan',
+ 'Document post-market monitoring system in a plan and integrate with existing quality management system.',
+ 'To formalize post-market monitoring.',
+ 'Create formal monitoring plan. Integrate with QMS. Define data collection methods. Specify analysis procedures.',
+ 'high', 92, true,
+ 'Assess monitoring plan. Verify: 1) Is plan documented? 2) Is it integrated with QMS? 3) Are methods defined?'),
+
+('AIACT-73.1', 'eu-ai-act', '73.1', 'Post-Market', 'Incidents',
+ 'Serious Incident Reporting',
+ 'Report serious incidents to market surveillance authorities of the Member State where the incident occurred within 15 days of becoming aware.',
+ 'To ensure authority awareness of serious AI incidents.',
+ 'Define serious incident criteria. Establish reporting procedures. Report within 15 days. Document reports.',
+ 'critical', 97, true,
+ 'Evaluate incident reporting. Check: 1) Are criteria defined? 2) Is reporting within 15 days? 3) Are reports documented?'),
+
+('AIACT-73.2', 'eu-ai-act', '73.2', 'Post-Market', 'Incidents',
+ 'Serious Incident Investigation',
+ 'Investigate serious incidents and take appropriate measures to ensure the AI system is safe.',
+ 'To address and remediate serious incidents.',
+ 'Conduct incident investigation. Identify root cause. Implement corrective measures. Verify effectiveness.',
+ 'high', 95, true,
+ 'Assess incident investigation. Verify: 1) Is investigation conducted? 2) Is root cause identified? 3) Are corrections implemented?'),
+
+('AIACT-73.3', 'eu-ai-act', '73.3', 'Post-Market', 'Incidents',
+ 'Incident Notification Content',
+ 'Provide all necessary information for incident evaluation including AI system identity, incident description, potential cause, and measures taken.',
+ 'To provide complete incident information to authorities.',
+ 'Include all required elements in reports. Provide sufficient detail. Update as information becomes available.',
+ 'high', 93, true,
+ 'Evaluate notification content. Check required elements: 1) System identity 2) Incident description 3) Potential cause 4) Measures taken'),
+
+('AIACT-73.4', 'eu-ai-act', '73.4', 'Post-Market', 'Incidents',
+ 'Follow-up Reporting',
+ 'Provide any additional relevant information that becomes available after initial notification to market surveillance authorities.',
+ 'To ensure complete incident documentation.',
+ 'Track evolving incident information. Provide updates to authorities. Document all communications.',
+ 'medium', 88, true,
+ 'Assess follow-up reporting. Verify: 1) Is information tracked? 2) Are updates provided? 3) Are communications documented?')
+
+ON CONFLICT (id) DO UPDATE SET
+  title = EXCLUDED.title,
+  description = EXCLUDED.description,
+  objective = EXCLUDED.objective,
+  implementation_guidance = EXCLUDED.implementation_guidance,
+  risk_category = EXCLUDED.risk_category,
+  implementation_priority = EXCLUDED.implementation_priority,
+  automated_test_available = EXCLUDED.automated_test_available,
+  ai_assessment_prompt = EXCLUDED.ai_assessment_prompt;
+
+-- Update framework control count
+UPDATE compliance_frameworks
+SET metadata = jsonb_set(
+  COALESCE(metadata, '{}'),
+  '{control_count}',
+  (SELECT COUNT(*)::text::jsonb FROM compliance_controls WHERE framework_id = 'eu-ai-act')
+)
+WHERE id = 'eu-ai-act';
+
+-- Log migration completion
+DO $$
+BEGIN
+  RAISE NOTICE 'EU AI Act controls migration complete. Total controls: %',
+    (SELECT COUNT(*) FROM compliance_controls WHERE framework_id = 'eu-ai-act');
+END $$;
