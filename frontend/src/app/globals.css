@@ -1,0 +1,338 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Urbanist:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-neutral-200;
+  }
+
+  /* Light mode default */
+  body {
+    @apply bg-neutral-50 text-neutral-900 antialiased;
+  }
+
+  /* Dark mode */
+  .dark body,
+  .dark {
+    @apply bg-coinest-bg-primary text-white;
+  }
+
+  .dark * {
+    @apply border-coinest-border;
+  }
+
+  /* Code blocks */
+  pre, code, .hljs, [class*="language-"] {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+    font-variant-ligatures: none !important;
+    font-feature-settings: "liga" 0, "calt" 0 !important;
+  }
+
+  pre span, code span {
+    font-family: inherit !important;
+  }
+
+  pre code {
+    white-space: pre !important;
+    tab-size: 4 !important;
+  }
+}
+
+@layer components {
+  /* Card Effects - Light Mode */
+  .card {
+    @apply bg-white rounded-xl shadow-sm border border-neutral-200 hover:shadow-md transition-shadow duration-300;
+  }
+
+  /* Card Effects - Dark Mode */
+  .dark .card {
+    @apply bg-coinest-bg-secondary border-coinest-border hover:border-coinest-border/80;
+  }
+
+  /* Buttons */
+  .btn-primary {
+    @apply bg-brand-400 text-white font-semibold px-6 py-2.5 rounded-lg hover:bg-brand-500 transition-all duration-200;
+  }
+
+  .dark .btn-primary {
+    @apply bg-coinest-accent-cyan hover:bg-coinest-accent-cyan/90;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-neutral-700 font-medium px-6 py-2.5 rounded-lg border border-neutral-300 hover:bg-neutral-50 transition-all duration-200;
+  }
+
+  .dark .btn-secondary {
+    @apply bg-coinest-bg-tertiary text-white border-coinest-border hover:bg-coinest-bg-tertiary/80;
+  }
+
+  .btn-ghost {
+    @apply text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 px-4 py-2 rounded-lg transition-colors;
+  }
+
+  .dark .btn-ghost {
+    @apply text-coinest-text-muted hover:text-white hover:bg-coinest-bg-tertiary;
+  }
+
+  /* Input Fields */
+  .input {
+    @apply bg-white border border-neutral-300 rounded-lg px-4 py-2 text-neutral-900 placeholder:text-neutral-500 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-400/20 transition-colors;
+  }
+
+  .dark .input {
+    @apply bg-coinest-bg-tertiary border-coinest-border text-white placeholder:text-coinest-text-muted focus:border-coinest-accent-cyan focus:ring-coinest-accent-cyan/20;
+  }
+
+  /* Tables */
+  .table {
+    @apply w-full bg-white rounded-xl border border-neutral-200 overflow-hidden;
+  }
+
+  .dark .table {
+    @apply bg-coinest-bg-secondary border-coinest-border;
+  }
+
+  .table th {
+    @apply px-6 py-4 text-left text-xs font-semibold text-neutral-500 uppercase tracking-wider bg-neutral-50;
+  }
+
+  .dark .table th {
+    @apply text-coinest-text-muted bg-coinest-bg-tertiary;
+  }
+
+  .table td {
+    @apply px-6 py-4 text-sm text-neutral-700;
+  }
+
+  .dark .table td {
+    @apply text-coinest-text-primary;
+  }
+
+  .table tbody tr {
+    @apply border-t border-neutral-200 hover:bg-neutral-50 transition-colors;
+  }
+
+  .dark .table tbody tr {
+    @apply border-coinest-border hover:bg-coinest-bg-tertiary;
+  }
+
+  /* Status Badges */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply bg-green-100 text-green-700;
+  }
+
+  .dark .badge-success {
+    @apply bg-green-500/20 text-green-400;
+  }
+
+  .badge-warning {
+    @apply bg-yellow-100 text-yellow-700;
+  }
+
+  .dark .badge-warning {
+    @apply bg-yellow-500/20 text-yellow-400;
+  }
+
+  .badge-error {
+    @apply bg-red-100 text-red-700;
+  }
+
+  .dark .badge-error {
+    @apply bg-red-500/20 text-red-400;
+  }
+
+  .badge-info {
+    @apply bg-blue-100 text-blue-700;
+  }
+
+  .dark .badge-info {
+    @apply bg-blue-500/20 text-blue-400;
+  }
+
+  .badge-neutral {
+    @apply bg-neutral-100 text-neutral-700;
+  }
+
+  .dark .badge-neutral {
+    @apply bg-coinest-bg-tertiary text-coinest-text-muted;
+  }
+
+  /* Risk Level Badges */
+  .badge-critical {
+    @apply bg-red-100 text-red-700;
+  }
+
+  .dark .badge-critical {
+    @apply bg-red-500/20 text-red-400;
+  }
+
+  .badge-high {
+    @apply bg-orange-100 text-orange-700;
+  }
+
+  .dark .badge-high {
+    @apply bg-orange-500/20 text-orange-400;
+  }
+
+  .badge-medium {
+    @apply bg-yellow-100 text-yellow-700;
+  }
+
+  .dark .badge-medium {
+    @apply bg-yellow-500/20 text-yellow-400;
+  }
+
+  .badge-low {
+    @apply bg-green-100 text-green-700;
+  }
+
+  .dark .badge-low {
+    @apply bg-green-500/20 text-green-400;
+  }
+
+  /* Section Spacing */
+  .section {
+    @apply py-8;
+  }
+
+  /* Container */
+  .container-custom {
+    @apply max-w-7xl mx-auto px-6;
+  }
+
+  /* Compliance-specific components */
+  .compliance-card {
+    @apply bg-white rounded-xl border border-neutral-200 p-6 hover:shadow-md transition-all;
+  }
+
+  .dark .compliance-card {
+    @apply bg-coinest-bg-secondary border-coinest-border hover:border-coinest-border/80;
+  }
+
+  .stat-card {
+    @apply bg-white rounded-xl border border-neutral-200 p-6;
+  }
+
+  .dark .stat-card {
+    @apply bg-coinest-bg-secondary border-coinest-border;
+  }
+
+  .chart-card {
+    @apply bg-white rounded-xl border border-neutral-200 overflow-hidden;
+  }
+
+  .dark .chart-card {
+    @apply bg-coinest-bg-secondary border-coinest-border;
+  }
+
+  /* Prose for content areas */
+  .prose {
+    @apply text-neutral-700;
+  }
+
+  .dark .prose {
+    @apply text-neutral-200;
+  }
+
+  .prose strong {
+    @apply text-neutral-900 font-semibold;
+  }
+
+  .dark .prose strong {
+    @apply text-white;
+  }
+
+  .prose a {
+    @apply text-brand-500 hover:text-brand-600 underline;
+  }
+
+  .dark .prose a {
+    @apply text-coinest-accent-cyan hover:text-coinest-accent-cyan/80;
+  }
+
+  /* Coinest Template Utilities (Dashboard Dark Theme) */
+  .coinest-layout {
+    @apply bg-coinest-bg-primary min-h-screen font-urbanist text-coinest-text-primary;
+  }
+
+  .coinest-card {
+    @apply bg-coinest-bg-secondary rounded-xl border border-coinest-border p-6;
+  }
+
+  .coinest-card-hover {
+    @apply hover:bg-coinest-bg-tertiary transition-colors duration-200;
+  }
+
+  .coinest-heading {
+    @apply text-2xl md:text-3xl font-bold text-white mb-4 font-urbanist;
+  }
+
+  .coinest-subheading {
+    @apply text-coinest-text-muted text-sm mb-6;
+  }
+}
+
+@layer utilities {
+  /* Focus States */
+  *:focus-visible {
+    outline: 2px solid #4faeca;
+    outline-offset: 2px;
+  }
+
+  /* Smooth Scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Hide Scrollbar */
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Custom scrollbar for dark mode */
+  .dark ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .dark ::-webkit-scrollbar-track {
+    background: #1a1a1a;
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    background: #333333;
+    border-radius: 4px;
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: #444444;
+  }
+}
+
+/* Print Styles */
+@media print {
+  header, nav, aside, button, .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+  }
+
+  section {
+    background: white !important;
+    box-shadow: none !important;
+  }
+}
