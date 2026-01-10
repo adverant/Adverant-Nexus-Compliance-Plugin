@@ -318,7 +318,8 @@ export function PageSkeleton({
 // Export All
 // ============================================================================
 
-export default {
+/** Named export containing all skeleton components */
+export const SkeletonComponents = {
   Skeleton,
   TableSkeleton,
   CardSkeleton,
@@ -326,3 +327,6 @@ export default {
   StatCardSkeleton,
   PageSkeleton,
 }
+
+/** Default export is the base Skeleton component */
+export default Skeleton

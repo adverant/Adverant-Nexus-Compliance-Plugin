@@ -96,6 +96,7 @@ import type {
   ApiResponse,
   CreateTensionInput,
   UpdateTensionInput,
+  TrustworthinessAssessment,
   // Assessment types
   AssessmentStatus,
   Assessment,
@@ -590,6 +591,214 @@ export const complianceApi = {
 
   deleteAISystem: (systemId: string) =>
     api.delete(`/ai-systems/${systemId}`),
+
+  // ========== Trustworthiness ==========
+  getTrustworthinessDashboard: (params: { tenantId: string; aiSystemId: string }) => {
+    const searchParams = new URLSearchParams()
+    searchParams.set('tenantId', params.tenantId)
+    searchParams.set('aiSystemId', params.aiSystemId)
+    return api.get<ApiResponse<TrustworthinessDashboardData>>(`/trustworthiness/dashboard?${searchParams.toString()}`).then(r => r.data)
+  },
+
+  listTrustworthinessAssessments: (params: {
+    tenantId: string
+    aiSystemId: string
+    status?: string
+    overallRating?: string
+    page?: number
+    limit?: number
+  }) => {
+    const searchParams = new URLSearchParams()
+    searchParams.set('tenantId', params.tenantId)
+    searchParams.set('aiSystemId', params.aiSystemId)
+    if (params.status) searchParams.set('status', params.status)
+    if (params.overallRating) searchParams.set('overallRating', params.overallRating)
+    if (params.page) searchParams.set('page', String(params.page))
+    if (params.limit) searchParams.set('limit', String(params.limit))
+    return api.get<ApiResponse<TrustworthinessAssessmentListResponse>>(`/trustworthiness/assessments?${searchParams.toString()}`).then(r => r.data)
+  },
+
+  getTrustworthinessAssessment: (id: string, tenantId: string) =>
+    api.get<ApiResponse<TrustworthinessAssessment>>(`/trustworthiness/assessments/${id}?tenantId=${tenantId}`).then(r => r.data),
+
+  createTrustworthinessAssessment: (data: CreateTrustworthinessAssessmentInput) =>
+    api.post<ApiResponse<TrustworthinessAssessment>>('/trustworthiness/assessments', data).then(r => r.data),
+
+  updateRequirementAssessment: (
+    assessmentId: string,
+    requirementId: string,
+    data: UpdateRequirementAssessmentInput
+  ) =>
+    api.put<ApiResponse<TrustworthinessAssessment>>(
+      `/trustworthiness/assessments/${assessmentId}/requirements/${requirementId}`,
+      data
+    ).then(r => r.data),
+
+  updateOverallAssessment: (assessmentId: string, data: UpdateOverallAssessmentInput) =>
+    api.put<ApiResponse<TrustworthinessAssessment>>(`/trustworthiness/assessments/${assessmentId}/overall`, data).then(r => r.data),
+
+  changeTrustworthinessAssessmentStatus: (assessmentId: string, data: { tenantId: string; status: string; reviewedBy?: string }) =>
+    api.patch<ApiResponse<TrustworthinessAssessment>>(`/trustworthiness/assessments/${assessmentId}/status`, data).then(r => r.data),
+
+  getTrustworthinessCoverage: (params: { tenantId: string; aiSystemId: string }) => {
+    const searchParams = new URLSearchParams()
+    searchParams.set('tenantId', params.tenantId)
+    searchParams.set('aiSystemId', params.aiSystemId)
+    return api.get<ApiResponse<TrustworthinessCoverageData>>(`/trustworthiness/coverage?${searchParams.toString()}`).then(r => r.data)
+  },
+
+  // Trustworthiness Findings
+  createTrustworthinessFinding: (assessmentId: string, data: CreateTrustworthinessFindingInput) =>
+    api.post<ApiResponse<TrustworthinessFinding>>(`/trustworthiness/assessments/${assessmentId}/findings`, data).then(r => r.data),
+
+  listTrustworthinessFindings: (assessmentId: string, params: {
+    tenantId: string
+    findingType?: string
+    requirementId?: string
+    status?: string
+  }) => {
+    const searchParams = new URLSearchParams()
+    searchParams.set('tenantId', params.tenantId)
+    if (params.findingType) searchParams.set('findingType', params.findingType)
+    if (params.requirementId) searchParams.set('requirementId', params.requirementId)
+    if (params.status) searchParams.set('status', params.status)
+    return api.get<ApiResponse<TrustworthinessFinding[]>>(`/trustworthiness/assessments/${assessmentId}/findings?${searchParams.toString()}`).then(r => r.data)
+  },
+
+  updateTrustworthinessFindingStatus: (findingId: string, data: { tenantId: string; status: string; resolutionNotes?: string }) =>
+    api.patch<ApiResponse<TrustworthinessFinding>>(`/trustworthiness/findings/${findingId}/status`, data).then(r => r.data),
+}
+
+// ============================================================================
+// Trustworthiness Types (for API responses)
+// ============================================================================
+
+/** Dashboard data for trustworthiness view */
+export interface TrustworthinessDashboardData {
+  overallScore: number
+  overallRating: 'trustworthy' | 'conditionally_trustworthy' | 'not_trustworthy' | 'inconclusive'
+  requirementBreakdown: Array<{
+    requirement: TrustworthyAIRequirement
+    label: string
+    score: number
+    rating: string
+    controlCount: number
+    assessedCount: number
+  }>
+  recentAssessments: Array<{
+    id: string
+    title: string
+    status: string
+    overallRating: string
+    createdAt: string
+  }>
+  tensionSummary: {
+    total: number
+    unresolved: number
+    bySeverity: Record<string, number>
+  }
+  coverageStats: {
+    totalRequirements: number
+    assessedRequirements: number
+    coveragePercentage: number
+  }
+}
+
+/** Paginated list response for assessments */
+export interface TrustworthinessAssessmentListResponse {
+  data: TrustworthinessAssessment[]
+  pagination: {
+    total: number
+    page: number
+    limit: number
+    totalPages: number
+  }
+}
+
+/** Coverage data for requirements */
+export interface TrustworthinessCoverageData {
+  totalRequirements: number
+  assessedRequirements: number
+  coveragePercentage: number
+  byRequirement: Array<{
+    requirement: TrustworthyAIRequirement
+    label: string
+    assessed: boolean
+    lastAssessedAt?: string
+    controlsCovered: number
+    totalControls: number
+  }>
+}
+
+/** Input for creating a trustworthiness assessment */
+export interface CreateTrustworthinessAssessmentInput {
+  tenantId: string
+  aiSystemId?: string
+  title: string
+  assessmentType?: 'comprehensive' | 'focused' | 'quick'
+  assessors?: string[]
+  methodology?: string
+  scope?: string
+}
+
+/** Input for updating a requirement assessment */
+export interface UpdateRequirementAssessmentInput {
+  tenantId: string
+  rating?: string
+  narrative?: string
+  confidence?: string
+  keyStrengths?: string[]
+  keyWeaknesses?: string[]
+  evidenceRefs?: string[]
+}
+
+/** Input for updating overall assessment */
+export interface UpdateOverallAssessmentInput {
+  tenantId: string
+  overallRating?: string
+  overallNarrative?: string
+  overallConfidence?: string
+  recommendations?: string[]
+  priorityActions?: string[]
+}
+
+/** Trustworthiness finding */
+export interface TrustworthinessFinding {
+  id: string
+  assessmentId: string
+  aiSystemId: string
+  requirementId?: TrustworthyAIRequirement
+  findingType: 'strength' | 'weakness' | 'risk' | 'opportunity' | 'recommendation'
+  title: string
+  description: string
+  severity?: 'critical' | 'high' | 'medium' | 'low'
+  priority?: 'urgent' | 'high' | 'medium' | 'low'
+  status: string
+  evidenceDescription?: string
+  evidenceSources?: string[]
+  recommendation?: string
+  recommendedActions?: Array<{ action: string; priority?: string; assignee?: string }>
+  relatedControls?: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+/** Input for creating a trustworthiness finding */
+export interface CreateTrustworthinessFindingInput {
+  tenantId: string
+  aiSystemId: string
+  requirementId?: TrustworthyAIRequirement
+  findingType: 'strength' | 'weakness' | 'risk' | 'opportunity' | 'recommendation'
+  title: string
+  description?: string
+  severity?: 'critical' | 'high' | 'medium' | 'low'
+  priority?: 'urgent' | 'high' | 'medium' | 'low'
+  evidenceDescription?: string
+  evidenceSources?: string[]
+  recommendation?: string
+  recommendedActions?: Array<{ action: string; priority?: string; assignee?: string }>
+  relatedControls?: string[]
+  createdBy?: string
 }
 
 export default complianceApi

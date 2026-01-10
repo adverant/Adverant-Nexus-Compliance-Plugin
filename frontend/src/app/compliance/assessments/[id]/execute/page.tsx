@@ -199,47 +199,12 @@ export default function AssessmentExecutionPage() {
     }
   }, [assessmentId])
 
-  // Connect to WebSocket for real-time updates
-  const connectWebSocket = useCallback(() => {
-    // Use HTTP polling as fallback if WebSocket is not available
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/compliance/assessments/${assessmentId}/progress`
-
-    try {
-      const ws = new WebSocket(wsUrl)
-
-      ws.onopen = () => {
-        console.log('WebSocket connected')
-      }
-
-      ws.onmessage = (event) => {
-        try {
-          const message: WebSocketMessage = JSON.parse(event.data)
-          handleWebSocketMessage(message)
-        } catch (err) {
-          console.error('Failed to parse WebSocket message:', err)
-        }
-      }
-
-      ws.onerror = (err) => {
-        console.error('WebSocket error:', err)
-        // Fallback to polling
-        startPolling()
-      }
-
-      ws.onclose = () => {
-        console.log('WebSocket disconnected')
-      }
-
-      wsRef.current = ws
-    } catch (err) {
-      console.error('Failed to connect WebSocket:', err)
-      // Fallback to polling
-      startPolling()
-    }
-  }, [assessmentId])
+  // Refs for stable function references (avoids circular dependencies)
+  const handleWebSocketMessageRef = useRef<(message: WebSocketMessage) => void>(() => {})
+  const startPollingRef = useRef<() => void>(() => {})
 
   // Handle incoming WebSocket messages
-  const handleWebSocketMessage = (message: WebSocketMessage) => {
+  const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
     switch (message.type) {
       case 'progress':
         setProgress({
@@ -317,7 +282,7 @@ export default function AssessmentExecutionPage() {
         fetchAssessment()
         break
     }
-  }
+  }, [fetchAssessment])
 
   // Polling fallback for environments without WebSocket
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
@@ -346,6 +311,49 @@ export default function AssessmentExecutionPage() {
       }
     }, 3000)
   }, [fetchAssessment])
+
+  // Update refs to point to latest function versions
+  handleWebSocketMessageRef.current = handleWebSocketMessage
+  startPollingRef.current = startPolling
+
+  // Connect to WebSocket for real-time updates
+  const connectWebSocket = useCallback(() => {
+    // Use HTTP polling as fallback if WebSocket is not available
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/compliance/assessments/${assessmentId}/progress`
+
+    try {
+      const ws = new WebSocket(wsUrl)
+
+      ws.onopen = () => {
+        console.log('WebSocket connected')
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const message: WebSocketMessage = JSON.parse(event.data)
+          handleWebSocketMessageRef.current(message)
+        } catch (err) {
+          console.error('Failed to parse WebSocket message:', err)
+        }
+      }
+
+      ws.onerror = (err) => {
+        console.error('WebSocket error:', err)
+        // Fallback to polling
+        startPollingRef.current()
+      }
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected')
+      }
+
+      wsRef.current = ws
+    } catch (err) {
+      console.error('Failed to connect WebSocket:', err)
+      // Fallback to polling
+      startPollingRef.current()
+    }
+  }, [assessmentId])
 
   // Initialize
   useEffect(() => {

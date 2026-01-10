@@ -9,11 +9,11 @@
 
 import {
   Brain,
-  CheckCircle2,
   AlertTriangle,
   Users,
   FileText,
   ChevronRight,
+  RefreshCw,
 } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -27,59 +27,19 @@ import {
 import { PageHeader } from '@/components/compliance'
 import { StatCard, StatGrid } from '@/components/coinest'
 import { ChartCard } from '@/components/coinest'
-import { useThemeClasses, useThemeColors } from '@/hooks/useThemeClasses'
+import { useThemeClasses, useThemeColors, THEME_COLORS } from '@/hooks/useThemeClasses'
 import { cn, snakeToTitle } from '@/lib/utils'
 import Link from 'next/link'
+import { useApiQuery } from '@/hooks/useApiQuery'
+import {
+  complianceApi,
+  type TrustworthinessDashboardData,
+} from '@/lib/compliance-api'
+import type { TrustworthyAIRequirement } from '@/types/compliance'
 
-// Mock assessment data
-const assessmentData = {
-  id: 'assess-001',
-  aiSystemId: 'ai-sys-001',
-  aiSystemName: 'Customer Service Chatbot',
-  overallRating: 'conditionally_trustworthy' as const,
-  overallScore: 72,
-  requirementAssessments: [
-    { requirement: 'human_agency_oversight', label: 'Human Agency & Oversight', rating: 'good', score: 75, findings: 3, tensions: 1 },
-    { requirement: 'technical_robustness_safety', label: 'Technical Robustness', rating: 'good', score: 82, findings: 2, tensions: 0 },
-    { requirement: 'privacy_data_governance', label: 'Privacy & Data Governance', rating: 'good', score: 78, findings: 4, tensions: 1 },
-    { requirement: 'transparency', label: 'Transparency', rating: 'moderate', score: 68, findings: 5, tensions: 2 },
-    { requirement: 'diversity_fairness_nondiscrimination', label: 'Fairness', rating: 'needs_improvement', score: 55, findings: 6, tensions: 3 },
-    { requirement: 'societal_environmental_wellbeing', label: 'Societal Wellbeing', rating: 'moderate', score: 62, findings: 4, tensions: 1 },
-    { requirement: 'accountability', label: 'Accountability', rating: 'excellent', score: 88, findings: 1, tensions: 0 },
-  ],
-  tensionCount: 8,
-  stakeholderCount: 12,
-  scenarioCount: 15,
-  createdAt: new Date().toISOString(),
-  assessedBy: 'AI Compliance Team',
-}
-
-const recentTensions = [
-  {
-    id: 't1',
-    valueA: 'Accuracy',
-    valueB: 'Privacy',
-    severity: 'significant' as const,
-    status: 'under_review' as const,
-    requirement: 'privacy_data_governance',
-  },
-  {
-    id: 't2',
-    valueA: 'Efficiency',
-    valueB: 'Explainability',
-    severity: 'moderate' as const,
-    status: 'identified' as const,
-    requirement: 'transparency',
-  },
-  {
-    id: 't3',
-    valueA: 'Performance',
-    valueB: 'Fairness',
-    severity: 'critical' as const,
-    status: 'identified' as const,
-    requirement: 'diversity_fairness_nondiscrimination',
-  },
-]
+// Default tenant and AI system IDs (in production these would come from context/auth)
+const DEFAULT_TENANT_ID = 'default'
+const DEFAULT_AI_SYSTEM_ID = 'default'
 
 const RATING_COLORS = {
   trustworthy: { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Trustworthy' },
@@ -87,6 +47,136 @@ const RATING_COLORS = {
   not_trustworthy: { bg: 'bg-red-500/20', text: 'text-red-400', label: 'Not Trustworthy' },
   inconclusive: { bg: 'bg-neutral-500/20', text: 'text-neutral-400', label: 'Inconclusive' },
 }
+
+// ============================================================================
+// Skeleton Components
+// ============================================================================
+
+function TrustworthinessPageSkeleton() {
+  const tc = useThemeClasses()
+
+  return (
+    <div className="p-6 space-y-6 animate-pulse">
+      {/* Header Skeleton */}
+      <div className="flex items-center justify-between">
+        <div className="space-y-2">
+          <div className={cn('h-8 w-64 rounded', tc.bgTertiary)} />
+          <div className={cn('h-4 w-48 rounded', tc.bgTertiary)} />
+        </div>
+        <div className={cn('h-10 w-36 rounded-lg', tc.bgTertiary)} />
+      </div>
+
+      {/* Overview Skeleton */}
+      <div className={cn('rounded-xl border p-6', tc.card)}>
+        <div className="flex items-center justify-between">
+          <div className="space-y-3">
+            <div className={cn('h-8 w-56 rounded', tc.bgTertiary)} />
+            <div className="flex gap-3">
+              <div className={cn('h-6 w-40 rounded-full', tc.bgTertiary)} />
+              <div className={cn('h-6 w-32 rounded', tc.bgTertiary)} />
+            </div>
+          </div>
+          <div className={cn('h-28 w-28 rounded-full', tc.bgTertiary)} />
+        </div>
+      </div>
+
+      {/* Stats Grid Skeleton */}
+      <div className="grid gap-4 md:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className={cn('rounded-xl border p-4', tc.card)}>
+            <div className={cn('h-4 w-24 rounded mb-2', tc.bgTertiary)} />
+            <div className={cn('h-8 w-16 rounded', tc.bgTertiary)} />
+          </div>
+        ))}
+      </div>
+
+      {/* Charts Skeleton */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className={cn('rounded-xl border p-6 h-96', tc.card)}>
+          <div className={cn('h-6 w-40 rounded mb-4', tc.bgTertiary)} />
+          <div className={cn('h-72 rounded', tc.bgTertiary)} />
+        </div>
+        <div className={cn('rounded-xl border p-6 h-96', tc.card)}>
+          <div className={cn('h-6 w-48 rounded mb-4', tc.bgTertiary)} />
+          <div className="space-y-3">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className={cn('h-16 rounded-lg', tc.bgTertiary)} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ErrorState({
+  message,
+  onRetry,
+}: {
+  message: string
+  onRetry?: () => void
+}) {
+  const tc = useThemeClasses()
+
+  return (
+    <div className="p-6">
+      <div className={cn('rounded-xl border p-8 text-center', tc.card)}>
+        <AlertTriangle className={cn('h-12 w-12 mx-auto mb-4 text-yellow-500')} />
+        <h3 className={cn('text-lg font-semibold mb-2', tc.textPrimary)}>
+          Unable to Load Dashboard
+        </h3>
+        <p className={cn('mb-4', tc.textMuted)}>{message}</p>
+        {onRetry && (
+          <button
+            onClick={onRetry}
+            className={cn('inline-flex items-center gap-2 px-4 py-2 rounded-lg', tc.buttonSecondary)}
+          >
+            <RefreshCw className="h-4 w-4" />
+            Try Again
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function EmptyState() {
+  const tc = useThemeClasses()
+
+  return (
+    <div className="p-6">
+      <PageHeader
+        title="Trustworthiness Assessment"
+        description="EU Trustworthy AI requirements evaluation"
+        icon={<Brain className={cn('h-6 w-6', tc.accentCyan)} />}
+        actions={
+          <button className={cn('flex items-center gap-2 px-4 py-2 rounded-lg', tc.buttonPrimary)}>
+            <FileText className="h-4 w-4" />
+            New Assessment
+          </button>
+        }
+      />
+      <div className={cn('rounded-xl border p-8 text-center mt-6', tc.card)}>
+        <Brain className={cn('h-12 w-12 mx-auto mb-4', tc.textMuted)} />
+        <h3 className={cn('text-lg font-semibold mb-2', tc.textPrimary)}>
+          No Assessments Yet
+        </h3>
+        <p className={cn('mb-4 max-w-md mx-auto', tc.textMuted)}>
+          Start your first trustworthiness assessment to evaluate your AI system
+          against the EU Trustworthy AI requirements.
+        </p>
+        <button className={cn('inline-flex items-center gap-2 px-4 py-2 rounded-lg', tc.buttonPrimary)}>
+          <FileText className="h-4 w-4" />
+          Create Assessment
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// Sub-Components
+// ============================================================================
 
 function CircularProgress({ value, size = 120 }: { value: number; size?: number }) {
   const themeColors = useThemeColors()
@@ -136,14 +226,24 @@ function CircularProgress({ value, size = 120 }: { value: number; size?: number 
   )
 }
 
+interface RequirementBreakdownItem {
+  requirement: TrustworthyAIRequirement
+  label: string
+  score: number
+  rating: string
+  controlCount: number
+  assessedCount: number
+}
+
 function RequirementScoreCard({
   requirement,
 }: {
-  requirement: typeof assessmentData.requirementAssessments[0]
+  requirement: RequirementBreakdownItem
 }) {
   const tc = useThemeClasses()
-  const themeColors = useThemeColors()
-  const color = themeColors.requirement[requirement.requirement as keyof typeof themeColors.requirement] || themeColors.status.neutral
+  const { isDark } = useThemeColors()
+  const colorDef = THEME_COLORS.requirement[requirement.requirement as keyof typeof THEME_COLORS.requirement]
+  const color = colorDef ? (isDark ? colorDef.dark : colorDef.light) : (isDark ? '#6b7280' : '#4b5563')
 
   return (
     <div className={cn('rounded-lg border p-4', tc.card)}>
@@ -175,55 +275,130 @@ function RequirementScoreCard({
         />
       </div>
       <div className={cn('flex items-center justify-between mt-2 text-xs', tc.textMuted)}>
-        <span>{requirement.findings} findings</span>
-        <span>{requirement.tensions} tensions</span>
+        <span>{requirement.assessedCount}/{requirement.controlCount} controls</span>
+        <span>{requirement.rating}</span>
       </div>
     </div>
   )
 }
 
-function TensionCard({ tension }: { tension: typeof recentTensions[0] }) {
+interface TensionSummaryCardProps {
+  tension: {
+    total: number
+    unresolved: number
+    bySeverity: Record<string, number>
+  }
+}
+
+function TensionSummaryCard({ tension }: TensionSummaryCardProps) {
   const tc = useThemeClasses()
 
   return (
-    <div className={cn('rounded-lg border p-4', tc.card)}>
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className={cn('font-medium', tc.textPrimary)}>{tension.valueA}</span>
-          <span className={tc.textMuted}>vs</span>
-          <span className={cn('font-medium', tc.textPrimary)}>{tension.valueB}</span>
+    <div className={cn('rounded-xl border', tc.card)}>
+      <div className={cn('px-6 py-4 border-b flex items-center justify-between', tc.border)}>
+        <div>
+          <h3 className={cn('text-lg font-semibold font-urbanist', tc.textPrimary)}>
+            Ethical Tensions Summary
+          </h3>
+          <p className={cn('text-sm mt-1', tc.textMuted)}>
+            Value conflicts and trade-offs
+          </p>
         </div>
-        <span className={cn(
-          'badge',
-          tension.severity === 'critical' ? tc.badgeCritical :
-          tension.severity === 'significant' ? tc.badgeHigh :
-          tc.badgeMedium
-        )}>
-          {tension.severity}
-        </span>
+        <Link
+          href="/compliance/tensions"
+          className={cn('text-sm font-medium flex items-center gap-1', tc.accentCyan)}
+        >
+          View All <ChevronRight className="h-4 w-4" />
+        </Link>
       </div>
-      <div className="flex items-center gap-2">
-        <span className={cn('badge', tc.badgeInfo)}>
-          {snakeToTitle(tension.requirement).slice(0, 20)}...
-        </span>
-        <span className={cn('badge', tc.badgeNeutral)}>
-          {tension.status.replace(/_/g, ' ')}
-        </span>
+      <div className="p-4">
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className={cn('rounded-lg border p-4 text-center', tc.card)}>
+            <div className={cn('text-2xl font-bold', tc.textPrimary)}>
+              {tension.total}
+            </div>
+            <div className={cn('text-sm', tc.textMuted)}>Total Tensions</div>
+          </div>
+          <div className={cn('rounded-lg border p-4 text-center', tc.card)}>
+            <div className="text-2xl font-bold text-yellow-500">
+              {tension.unresolved}
+            </div>
+            <div className={cn('text-sm', tc.textMuted)}>Unresolved</div>
+          </div>
+          <div className={cn('rounded-lg border p-4', tc.card)}>
+            <div className={cn('text-sm font-medium mb-2', tc.textPrimary)}>
+              By Severity
+            </div>
+            <div className="space-y-1">
+              {Object.entries(tension.bySeverity).map(([severity, count]) => (
+                <div key={severity} className="flex items-center justify-between text-xs">
+                  <span className={cn(
+                    'badge',
+                    severity === 'critical' ? tc.badgeCritical :
+                    severity === 'significant' || severity === 'high' ? tc.badgeHigh :
+                    tc.badgeMedium
+                  )}>
+                    {severity}
+                  </span>
+                  <span className={tc.textMuted}>{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
+
+// ============================================================================
+// Main Page Component
+// ============================================================================
 
 export default function TrustworthinessPage() {
   const tc = useThemeClasses()
   const themeColors = useThemeColors()
 
-  const radarData = assessmentData.requirementAssessments.map((r) => ({
+  // Fetch trustworthiness dashboard data
+  const {
+    data: dashboard,
+    isLoading,
+    error,
+    refetch,
+  } = useApiQuery<TrustworthinessDashboardData>(
+    () => complianceApi.getTrustworthinessDashboard({
+      tenantId: DEFAULT_TENANT_ID,
+      aiSystemId: DEFAULT_AI_SYSTEM_ID,
+    }),
+    {
+      deps: [],
+      retryCount: 2,
+      retryDelay: 1000,
+    }
+  )
+
+  // Loading state
+  if (isLoading) {
+    return <TrustworthinessPageSkeleton />
+  }
+
+  // Error state
+  if (error) {
+    return <ErrorState message={error} onRetry={refetch} />
+  }
+
+  // Empty state - no data available
+  if (!dashboard) {
+    return <EmptyState />
+  }
+
+  // Prepare radar chart data
+  const radarData = dashboard.requirementBreakdown.map((r) => ({
     ...r,
     fullMark: 100,
   }))
 
-  const rating = RATING_COLORS[assessmentData.overallRating]
+  const rating = RATING_COLORS[dashboard.overallRating] || RATING_COLORS.inconclusive
 
   return (
     <div className="p-6 space-y-6">
@@ -233,10 +408,19 @@ export default function TrustworthinessPage() {
         description="EU Trustworthy AI requirements evaluation"
         icon={<Brain className={cn('h-6 w-6', tc.accentCyan)} />}
         actions={
-          <button className={cn('flex items-center gap-2 px-4 py-2 rounded-lg', tc.buttonPrimary)}>
-            <FileText className="h-4 w-4" />
-            New Assessment
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => refetch()}
+              className={cn('flex items-center gap-2 px-3 py-2 rounded-lg', tc.buttonSecondary)}
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </button>
+            <button className={cn('flex items-center gap-2 px-4 py-2 rounded-lg', tc.buttonPrimary)}>
+              <FileText className="h-4 w-4" />
+              New Assessment
+            </button>
+          </div>
         }
       />
 
@@ -245,18 +429,18 @@ export default function TrustworthinessPage() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className={cn('text-2xl font-bold font-urbanist', tc.textPrimary)}>
-              {assessmentData.aiSystemName}
+              AI System Assessment
             </h2>
             <div className="flex items-center gap-3 mt-2">
               <span className={cn('badge', rating.bg, rating.text)}>
                 {rating.label}
               </span>
               <span className={cn('text-sm', tc.textMuted)}>
-                Assessed by {assessmentData.assessedBy}
+                {dashboard.coverageStats.assessedRequirements}/{dashboard.coverageStats.totalRequirements} requirements assessed
               </span>
             </div>
           </div>
-          <CircularProgress value={assessmentData.overallScore} />
+          <CircularProgress value={dashboard.overallScore} />
         </div>
       </div>
 
@@ -264,25 +448,25 @@ export default function TrustworthinessPage() {
       <StatGrid columns={4}>
         <StatCard
           title="Overall Score"
-          value={`${assessmentData.overallScore}%`}
+          value={`${dashboard.overallScore}%`}
           icon={<Brain className="h-5 w-5" />}
           variant="cyan"
         />
         <StatCard
           title="Ethical Tensions"
-          value={assessmentData.tensionCount}
+          value={dashboard.tensionSummary.total}
           icon={<AlertTriangle className="h-5 w-5" />}
           variant="warning"
         />
         <StatCard
-          title="Stakeholders"
-          value={assessmentData.stakeholderCount}
+          title="Coverage"
+          value={`${dashboard.coverageStats.coveragePercentage}%`}
           icon={<Users className="h-5 w-5" />}
           variant="default"
         />
         <StatCard
-          title="Scenarios"
-          value={assessmentData.scenarioCount}
+          title="Recent Assessments"
+          value={dashboard.recentAssessments.length}
           icon={<FileText className="h-5 w-5" />}
           variant="default"
         />
@@ -335,39 +519,58 @@ export default function TrustworthinessPage() {
             </h3>
           </div>
           <div className="p-4 space-y-3 max-h-[380px] overflow-y-auto">
-            {assessmentData.requirementAssessments.map((req) => (
+            {dashboard.requirementBreakdown.map((req) => (
               <RequirementScoreCard key={req.requirement} requirement={req} />
             ))}
           </div>
         </div>
       </div>
 
-      {/* Ethical Tensions */}
-      <div className={cn('rounded-xl border', tc.card)}>
-        <div className={cn('px-6 py-4 border-b flex items-center justify-between', tc.border)}>
-          <div>
+      {/* Ethical Tensions Summary */}
+      <TensionSummaryCard tension={dashboard.tensionSummary} />
+
+      {/* Recent Assessments */}
+      {dashboard.recentAssessments.length > 0 && (
+        <div className={cn('rounded-xl border', tc.card)}>
+          <div className={cn('px-6 py-4 border-b', tc.border)}>
             <h3 className={cn('text-lg font-semibold font-urbanist', tc.textPrimary)}>
-              Ethical Tensions
+              Recent Assessments
             </h3>
-            <p className={cn('text-sm mt-1', tc.textMuted)}>
-              Value conflicts and trade-offs identified
-            </p>
           </div>
-          <Link
-            href="/compliance/tensions"
-            className={cn('text-sm font-medium flex items-center gap-1', tc.accentCyan)}
-          >
-            View All <ChevronRight className="h-4 w-4" />
-          </Link>
-        </div>
-        <div className="p-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {recentTensions.map((tension) => (
-              <TensionCard key={tension.id} tension={tension} />
-            ))}
+          <div className="p-4">
+            <div className="space-y-2">
+              {dashboard.recentAssessments.map((assessment) => (
+                <div
+                  key={assessment.id}
+                  className={cn('flex items-center justify-between p-3 rounded-lg', tc.bgTertiary)}
+                >
+                  <div>
+                    <span className={cn('font-medium', tc.textPrimary)}>
+                      {assessment.title}
+                    </span>
+                    <span className={cn('text-sm ml-2', tc.textMuted)}>
+                      {new Date(assessment.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={cn(
+                      'badge',
+                      assessment.overallRating === 'trustworthy' ? tc.badgeSuccess :
+                      assessment.overallRating === 'conditionally_trustworthy' ? tc.badgeWarning :
+                      tc.badgeError
+                    )}>
+                      {snakeToTitle(assessment.overallRating)}
+                    </span>
+                    <span className={cn('badge', tc.badgeNeutral)}>
+                      {assessment.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
