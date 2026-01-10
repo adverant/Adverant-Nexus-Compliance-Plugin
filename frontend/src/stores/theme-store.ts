@@ -8,7 +8,7 @@
  */
 
 import { create } from 'zustand'
-import { useShallow } from 'zustand/react/shallow'
+import { useShallow } from 'zustand/shallow'
 
 // ============================================================================
 // Types
