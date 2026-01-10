@@ -22,6 +22,8 @@ import {
   Moon,
   Sun,
   ShieldCheck,
+  ClipboardCheck,
+  FileText,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/stores/theme-store'
@@ -43,10 +45,23 @@ const navigation: NavItem[] = [
     description: 'Overview of compliance posture',
   },
   {
+    name: 'Assessments',
+    href: '/compliance/assessments',
+    icon: ClipboardCheck,
+    description: 'Run and manage assessments',
+  },
+  {
     name: 'Control Library',
     href: '/compliance/controls',
     icon: ListChecks,
     description: '688+ controls across 6 frameworks',
+  },
+  {
+    name: 'Reports',
+    href: '/compliance/reports',
+    icon: FileText,
+    description: 'Generate compliance reports',
+    divider: true,
   },
   {
     name: 'Cross-Framework',
@@ -59,7 +74,6 @@ const navigation: NavItem[] = [
     href: '/compliance/trustworthiness',
     icon: Brain,
     description: 'AI assessment based on 7 EU requirements',
-    divider: true,
   },
   {
     name: 'Ethical Tensions',
@@ -72,13 +86,13 @@ const navigation: NavItem[] = [
     href: '/compliance/z-inspection',
     icon: FileSearch,
     description: 'Import and track Z-Inspection reports',
+    divider: true,
   },
   {
     name: 'Regulatory Monitor',
     href: '/compliance/regulatory',
     icon: Radio,
     description: 'Track regulatory changes',
-    divider: true,
   },
   {
     name: 'Settings',
