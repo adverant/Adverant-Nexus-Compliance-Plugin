@@ -10,6 +10,7 @@
 
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import { useMemo, useCallback } from 'react'
 import type {
   FrameworkId,
   CreateAssessmentInput,
@@ -418,25 +419,24 @@ export const useAssessmentWizardStore = create<AssessmentWizardStore>()(
 )
 
 // ============================================================================
-// Convenience Hooks - Direct selectors with stable action references
+// Convenience Hooks - Memoized with stable action references
 // ============================================================================
+
+// Get stable actions once - these never change
+const getStableActions = () => useAssessmentWizardStore.getState()
 
 /**
  * Hook for wizard navigation state.
- * Uses getState() for actions to ensure stable references.
+ * Uses useMemo and getState() for stable references.
  */
 export const useWizardNavigation = () => {
   const currentStep = useAssessmentWizardStore((state) => state.currentStep)
-
-  // Get stable action references from the store
-  const store = useAssessmentWizardStore.getState()
-  const goToStep = store.goToStep
-  const nextStep = store.nextStep
-  const prevStep = store.prevStep
-
   const currentStepIndex = WIZARD_STEPS.indexOf(currentStep)
 
-  return {
+  // Actions are stable - get them once
+  const { goToStep, nextStep, prevStep } = getStableActions()
+
+  return useMemo(() => ({
     currentStep,
     goToStep,
     nextStep,
@@ -445,75 +445,73 @@ export const useWizardNavigation = () => {
     canGoPrev: currentStepIndex > 0,
     currentStepIndex,
     totalSteps: WIZARD_STEPS.length,
-  }
+  }), [currentStep, currentStepIndex, goToStep, nextStep, prevStep])
 }
 
 /**
  * Hook for framework step.
- * Uses getState() for actions to ensure stable references.
+ * Uses useMemo and getState() for stable references.
  */
 export const useFrameworkStep = () => {
   const data = useAssessmentWizardStore((state) => state.formData.framework)
   const validation = useAssessmentWizardStore((state) => state.validation.framework)
 
-  // Get stable action references from the store
-  const store = useAssessmentWizardStore.getState()
-  const setData = store.setFrameworkData
-  const validateStep = store.validateStep
+  const { setFrameworkData, validateStep } = getStableActions()
 
-  return {
+  // Create stable validate function with useCallback
+  const validate = useCallback(() => validateStep('framework'), [validateStep])
+
+  return useMemo(() => ({
     data,
-    setData,
+    setData: setFrameworkData,
     validation,
-    validate: () => validateStep('framework'),
-  }
+    validate,
+  }), [data, setFrameworkData, validation, validate])
 }
 
 /**
  * Hook for scope step.
- * Uses getState() for actions to ensure stable references.
+ * Uses useMemo and getState() for stable references.
  */
 export const useScopeStep = () => {
   const data = useAssessmentWizardStore((state) => state.formData.scope)
   const validation = useAssessmentWizardStore((state) => state.validation.scope)
 
-  // Get stable action references from the store
-  const store = useAssessmentWizardStore.getState()
-  const setData = store.setScopeData
-  const validateStep = store.validateStep
+  const { setScopeData, validateStep } = getStableActions()
 
-  return {
+  const validate = useCallback(() => validateStep('scope'), [validateStep])
+
+  return useMemo(() => ({
     data,
-    setData,
+    setData: setScopeData,
     validation,
-    validate: () => validateStep('scope'),
-  }
+    validate,
+  }), [data, setScopeData, validation, validate])
 }
 
 /**
  * Hook for AI config step.
- * Uses getState() for actions to ensure stable references.
+ * Uses useMemo and getState() for stable references.
  */
 export const useAIConfigStep = () => {
   const data = useAssessmentWizardStore((state) => state.formData.aiConfig)
   const validation = useAssessmentWizardStore((state) => state.validation['ai-config'])
 
-  // Get stable action references from the store
-  const store = useAssessmentWizardStore.getState()
-  const setData = store.setAIConfigData
-  const validateStep = store.validateStep
+  const { setAIConfigData, validateStep } = getStableActions()
 
-  return {
+  const validate = useCallback(() => validateStep('ai-config'), [validateStep])
+
+  return useMemo(() => ({
     data,
-    setData,
+    setData: setAIConfigData,
     validation,
-    validate: () => validateStep('ai-config'),
-  }
+    validate,
+  }), [data, setAIConfigData, validation, validate])
 }
 
 /**
  * Hook for review step and submission.
- * Uses getState() for actions to ensure stable references.
+ * Uses useMemo and getState() for stable references.
  */
 export const useReviewStep = () => {
   const formData = useAssessmentWizardStore((state) => state.formData)
@@ -521,15 +519,15 @@ export const useReviewStep = () => {
   const isSubmitting = useAssessmentWizardStore((state) => state.isSubmitting)
   const submitError = useAssessmentWizardStore((state) => state.submitError)
 
-  // Get stable action references from the store
-  const store = useAssessmentWizardStore.getState()
-  const setSubmitting = store.setSubmitting
-  const setSubmitError = store.setSubmitError
-  const buildAssessmentInput = store.buildAssessmentInput
-  const validateAll = store.validateAll
-  const reset = store.reset
+  const {
+    setSubmitting,
+    setSubmitError,
+    buildAssessmentInput,
+    validateAll,
+    reset,
+  } = getStableActions()
 
-  return {
+  return useMemo(() => ({
     formData,
     validation,
     isSubmitting,
@@ -539,24 +537,31 @@ export const useReviewStep = () => {
     buildAssessmentInput,
     validateAll,
     reset,
-  }
+  }), [
+    formData,
+    validation,
+    isSubmitting,
+    submitError,
+    setSubmitting,
+    setSubmitError,
+    buildAssessmentInput,
+    validateAll,
+    reset,
+  ])
 }
 
 /**
  * Hook for checking if wizard has unsaved changes.
- * Uses getState() for actions to ensure stable references.
+ * Uses useMemo and getState() for stable references.
  */
 export const useWizardDirtyState = () => {
   const isDirty = useAssessmentWizardStore((state) => state.isDirty)
 
-  // Get stable action references from the store
-  const store = useAssessmentWizardStore.getState()
-  const markClean = store.markClean
-  const reset = store.reset
+  const { markClean, reset } = getStableActions()
 
-  return {
+  return useMemo(() => ({
     isDirty,
     markClean,
     reset,
-  }
+  }), [isDirty, markClean, reset])
 }

@@ -128,7 +128,8 @@ export default function NewAssessmentPage() {
   const { currentStep, goToStep, nextStep, prevStep, canGoNext, canGoPrev, currentStepIndex, totalSteps } =
     useWizardNavigation()
 
-  const reset = useAssessmentWizardStore((state) => state.reset)
+  // Get reset action from getState() for stable reference
+  const reset = useAssessmentWizardStore.getState().reset
 
   // Load AI systems for scope step
   const [aiSystems, setAISystems] = useState<AISystem[]>([])
