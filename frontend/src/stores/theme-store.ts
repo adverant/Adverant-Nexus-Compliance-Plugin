@@ -8,7 +8,6 @@
  */
 
 import { create } from 'zustand'
-import { useShallow } from 'zustand/shallow'
 
 // ============================================================================
 // Types
@@ -126,17 +125,13 @@ function applyThemeToDocument(theme: Theme): void {
 
 /**
  * Hook for easier consumption of theme store.
- * Uses useShallow to prevent TDZ errors in minified bundles.
+ * Uses direct selectors to prevent TDZ errors in minified bundles.
  */
 export const useTheme = () => {
-  const { theme, isHydrated, toggleTheme, setTheme } = useThemeStore(
-    useShallow((state) => ({
-      theme: state.theme,
-      isHydrated: state.isHydrated,
-      toggleTheme: state.toggleTheme,
-      setTheme: state.setTheme,
-    }))
-  )
+  const theme = useThemeStore((state) => state.theme)
+  const isHydrated = useThemeStore((state) => state.isHydrated)
+  const toggleTheme = useThemeStore((state) => state.toggleTheme)
+  const setTheme = useThemeStore((state) => state.setTheme)
 
   return { theme, isHydrated, toggleTheme, setTheme, isDark: theme === 'dark' }
 }

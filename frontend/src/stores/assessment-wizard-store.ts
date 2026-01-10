@@ -10,7 +10,6 @@
 
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import { useShallow } from 'zustand/shallow'
 import type {
   FrameworkId,
   CreateAssessmentInput,
@@ -419,97 +418,121 @@ export const useAssessmentWizardStore = create<AssessmentWizardStore>()(
 )
 
 // ============================================================================
-// Convenience Hooks
+// Convenience Hooks - Direct selectors (no useShallow to avoid bundling issues)
 // ============================================================================
 
 /**
  * Hook for wizard navigation state
  */
 export const useWizardNavigation = () => {
-  return useAssessmentWizardStore(
-    useShallow((state) => ({
-      currentStep: state.currentStep,
-      goToStep: state.goToStep,
-      nextStep: state.nextStep,
-      prevStep: state.prevStep,
-      canGoNext: WIZARD_STEPS.indexOf(state.currentStep) < WIZARD_STEPS.length - 1,
-      canGoPrev: WIZARD_STEPS.indexOf(state.currentStep) > 0,
-      currentStepIndex: WIZARD_STEPS.indexOf(state.currentStep),
-      totalSteps: WIZARD_STEPS.length,
-    }))
-  )
+  const currentStep = useAssessmentWizardStore((state) => state.currentStep)
+  const goToStep = useAssessmentWizardStore((state) => state.goToStep)
+  const nextStep = useAssessmentWizardStore((state) => state.nextStep)
+  const prevStep = useAssessmentWizardStore((state) => state.prevStep)
+
+  const currentStepIndex = WIZARD_STEPS.indexOf(currentStep)
+
+  return {
+    currentStep,
+    goToStep,
+    nextStep,
+    prevStep,
+    canGoNext: currentStepIndex < WIZARD_STEPS.length - 1,
+    canGoPrev: currentStepIndex > 0,
+    currentStepIndex,
+    totalSteps: WIZARD_STEPS.length,
+  }
 }
 
 /**
  * Hook for framework step
  */
 export const useFrameworkStep = () => {
-  return useAssessmentWizardStore(
-    useShallow((state) => ({
-      data: state.formData.framework,
-      setData: state.setFrameworkData,
-      validation: state.validation.framework,
-      validate: () => state.validateStep('framework'),
-    }))
-  )
+  const data = useAssessmentWizardStore((state) => state.formData.framework)
+  const setData = useAssessmentWizardStore((state) => state.setFrameworkData)
+  const validation = useAssessmentWizardStore((state) => state.validation.framework)
+  const validateStep = useAssessmentWizardStore((state) => state.validateStep)
+
+  return {
+    data,
+    setData,
+    validation,
+    validate: () => validateStep('framework'),
+  }
 }
 
 /**
  * Hook for scope step
  */
 export const useScopeStep = () => {
-  return useAssessmentWizardStore(
-    useShallow((state) => ({
-      data: state.formData.scope,
-      setData: state.setScopeData,
-      validation: state.validation.scope,
-      validate: () => state.validateStep('scope'),
-    }))
-  )
+  const data = useAssessmentWizardStore((state) => state.formData.scope)
+  const setData = useAssessmentWizardStore((state) => state.setScopeData)
+  const validation = useAssessmentWizardStore((state) => state.validation.scope)
+  const validateStep = useAssessmentWizardStore((state) => state.validateStep)
+
+  return {
+    data,
+    setData,
+    validation,
+    validate: () => validateStep('scope'),
+  }
 }
 
 /**
  * Hook for AI config step
  */
 export const useAIConfigStep = () => {
-  return useAssessmentWizardStore(
-    useShallow((state) => ({
-      data: state.formData.aiConfig,
-      setData: state.setAIConfigData,
-      validation: state.validation['ai-config'],
-      validate: () => state.validateStep('ai-config'),
-    }))
-  )
+  const data = useAssessmentWizardStore((state) => state.formData.aiConfig)
+  const setData = useAssessmentWizardStore((state) => state.setAIConfigData)
+  const validation = useAssessmentWizardStore((state) => state.validation['ai-config'])
+  const validateStep = useAssessmentWizardStore((state) => state.validateStep)
+
+  return {
+    data,
+    setData,
+    validation,
+    validate: () => validateStep('ai-config'),
+  }
 }
 
 /**
  * Hook for review step and submission
  */
 export const useReviewStep = () => {
-  return useAssessmentWizardStore(
-    useShallow((state) => ({
-      formData: state.formData,
-      validation: state.validation.review,
-      isSubmitting: state.isSubmitting,
-      submitError: state.submitError,
-      setSubmitting: state.setSubmitting,
-      setSubmitError: state.setSubmitError,
-      buildAssessmentInput: state.buildAssessmentInput,
-      validateAll: state.validateAll,
-      reset: state.reset,
-    }))
-  )
+  const formData = useAssessmentWizardStore((state) => state.formData)
+  const validation = useAssessmentWizardStore((state) => state.validation.review)
+  const isSubmitting = useAssessmentWizardStore((state) => state.isSubmitting)
+  const submitError = useAssessmentWizardStore((state) => state.submitError)
+  const setSubmitting = useAssessmentWizardStore((state) => state.setSubmitting)
+  const setSubmitError = useAssessmentWizardStore((state) => state.setSubmitError)
+  const buildAssessmentInput = useAssessmentWizardStore((state) => state.buildAssessmentInput)
+  const validateAll = useAssessmentWizardStore((state) => state.validateAll)
+  const reset = useAssessmentWizardStore((state) => state.reset)
+
+  return {
+    formData,
+    validation,
+    isSubmitting,
+    submitError,
+    setSubmitting,
+    setSubmitError,
+    buildAssessmentInput,
+    validateAll,
+    reset,
+  }
 }
 
 /**
  * Hook for checking if wizard has unsaved changes
  */
 export const useWizardDirtyState = () => {
-  return useAssessmentWizardStore(
-    useShallow((state) => ({
-      isDirty: state.isDirty,
-      markClean: state.markClean,
-      reset: state.reset,
-    }))
-  )
+  const isDirty = useAssessmentWizardStore((state) => state.isDirty)
+  const markClean = useAssessmentWizardStore((state) => state.markClean)
+  const reset = useAssessmentWizardStore((state) => state.reset)
+
+  return {
+    isDirty,
+    markClean,
+    reset,
+  }
 }
