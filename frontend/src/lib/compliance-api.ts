@@ -3,288 +3,308 @@
  *
  * API client for the Nexus Compliance Engine plugin providing:
  * - Framework and control management
- * - Quantitative and qualitative assessments
- * - Cross-framework analysis
- * - Visualization data endpoints
- * - Z-Inspection integration
+ * - Dashboard and visualization data
+ * - Ethical tensions management
+ * - Z-Inspection report handling
  * - Regulatory monitoring
+ *
+ * IMPORTANT: Types are imported from @/types/compliance - do NOT duplicate here.
  */
 
 import { api } from './api'
 
-// ============================================================================
-// Types
-// ============================================================================
+// Re-export all types from the centralized types module
+export type {
+  FrameworkId,
+  TrustworthyAIRequirement,
+  RiskLevel,
+  ControlStatus,
+  AlertSeverity,
+  AlertType,
+  TensionSeverity,
+  TensionStatus,
+  ZInspectionStatus,
+  RegulatoryUpdateStatus,
+  RegulatoryUpdateType,
+  ComplianceFramework,
+  ComplianceControl,
+  DashboardKPIs,
+  FrameworkScore,
+  RequirementScore,
+  RiskDistribution,
+  ComplianceAlert,
+  DashboardData,
+  EthicalTension,
+  ZInspectionReport,
+  ZInspectionFinding,
+  RegulatorySource,
+  RegulatoryUpdate,
+  TrustworthinessAssessment,
+  RequirementAssessmentDetail,
+  ApiResponse,
+  CreateTensionInput,
+  UpdateTensionInput,
+} from '@/types/compliance'
 
-export interface ComplianceFramework {
-  id: string
-  name: string
-  fullName: string
-  version: string
-  jurisdiction: string
-  category: string
-  controlCount: number
-  enabled: boolean
-  complianceScore?: number
-}
+// Import types for use in this file
+import type {
+  FrameworkId,
+  TrustworthyAIRequirement,
+  RiskLevel,
+  ControlStatus,
+  TensionSeverity,
+  TensionStatus,
+  ZInspectionStatus,
+  RegulatoryUpdateStatus,
+  RegulatoryUpdateType,
+  ComplianceControl,
+  DashboardData,
+  DashboardKPIs,
+  FrameworkScore,
+  RequirementScore,
+  RiskDistribution,
+  ComplianceAlert,
+  EthicalTension,
+  ZInspectionReport,
+  ZInspectionFinding,
+  RegulatorySource,
+  RegulatoryUpdate,
+  ApiResponse,
+  CreateTensionInput,
+  UpdateTensionInput,
+} from '@/types/compliance'
 
-export interface ComplianceControl {
-  id: string
-  frameworkId: string
-  controlNumber: string
-  title: string
-  description: string
-  category: string
-  subcategory?: string
-  riskLevel: 'critical' | 'high' | 'medium' | 'low'
-  implementationStatus: 'not_started' | 'in_progress' | 'implemented' | 'not_applicable'
-  score?: number
-  lastAssessed?: string
-  euRequirement?: TrustworthyAIRequirement
-}
-
-export type TrustworthyAIRequirement =
-  | 'human_agency_oversight'
-  | 'technical_robustness_safety'
-  | 'privacy_data_governance'
-  | 'transparency'
-  | 'diversity_fairness_nondiscrimination'
-  | 'societal_environmental_wellbeing'
-  | 'accountability'
-
-export interface ComplianceDashboardData {
-  kpis: {
-    overallScore: number
-    scoreChange: number
-    totalControls: number
-    implementedControls: number
-    criticalGaps: number
-    upcomingDeadlines: number
-  }
-  frameworkScores: Array<{
-    frameworkId: string
-    frameworkName: string
-    score: number
-    controlCount: number
-    implementedCount: number
-  }>
-  requirementScores: Array<{
-    requirement: TrustworthyAIRequirement
-    label: string
-    score: number
-    controlCount: number
-  }>
-  recentAlerts: Array<{
-    id: string
-    type: string
-    severity: 'critical' | 'high' | 'medium' | 'low'
-    message: string
-    createdAt: string
-    acknowledged: boolean
-  }>
-  riskDistribution: Array<{
-    level: string
-    count: number
-    percentage: number
-  }>
-}
-
-export interface SankeyData {
-  nodes: Array<{ id: string; name: string; category: string }>
-  links: Array<{ source: string; target: string; value: number }>
-}
-
-export interface HeatmapData {
-  rows: string[]
-  columns: string[]
-  data: number[][]
-  labels: {
-    rows: string[]
-    columns: string[]
-  }
-}
-
-export interface RadarData {
-  labels: string[]
-  datasets: Array<{
-    label: string
-    data: number[]
-    backgroundColor: string
-    borderColor: string
-  }>
-}
-
-export interface TrustworthinessAssessment {
-  id: string
-  aiSystemId: string
-  aiSystemName: string
-  overallRating: 'trustworthy' | 'conditionally_trustworthy' | 'not_trustworthy' | 'inconclusive'
-  overallScore: number
-  requirementAssessments: Array<{
-    requirement: TrustworthyAIRequirement
-    label: string
-    rating: string
-    score: number
-    findings: number
-    tensions: number
-  }>
-  tensionCount: number
-  stakeholderCount: number
-  scenarioCount: number
-  createdAt: string
-  assessedBy: string
-}
-
-export interface EthicalTension {
-  id: string
-  valueA: string
-  valueB: string
-  description: string
-  severity: 'critical' | 'significant' | 'moderate' | 'minor'
-  status: 'identified' | 'under_review' | 'mitigated' | 'accepted' | 'unresolved'
-  affectedRequirement: TrustworthyAIRequirement
-  stakeholdersAffected: string[]
-  createdAt: string
-}
-
-export interface ZInspectionReport {
-  id: string
-  aiSystemId: string
-  title: string
-  conductedAt: string
-  importedAt: string
-  findingCount: number
-  tensionCount: number
-  mappedControlCount: number
-  status: 'pending' | 'imported' | 'mapped' | 'integrated'
-}
-
-export interface RegulatoryUpdate {
-  id: string
-  sourceId: string
-  sourceName: string
-  frameworkId?: string
-  updateType: 'new_framework' | 'amendment' | 'guidance' | 'enforcement' | 'deadline'
-  title: string
-  summary: string
-  originalUrl: string
-  detectedAt: string
-  effectiveDate?: string
-  status: 'pending' | 'analyzed' | 'implemented' | 'rejected'
-}
-
-export interface CrossFrameworkAnalysis {
-  framework1: string
-  framework2: string
-  overlapCount: number
-  overlapPercentage: number
-  mappings: Array<{
-    sourceControlId: string
-    sourceControlName: string
-    targetControlId: string
-    targetControlName: string
-    relationshipType: 'equivalent' | 'partial' | 'related' | 'supersedes'
-    confidence: number
-  }>
-}
-
-export interface GapAnalysis {
-  tenantId: string
-  analyzedAt: string
-  totalGaps: number
-  criticalGaps: number
-  gaps: Array<{
-    controlId: string
-    controlName: string
-    frameworkId: string
-    frameworkName: string
-    riskLevel: string
-    gapType: 'not_implemented' | 'partially_implemented' | 'not_assessed'
-    recommendation: string
-  }>
-  recommendations: string[]
-}
+// Re-export type guards and constants for convenience
+export {
+  isFrameworkId,
+  isTrustworthyAIRequirement,
+  isRiskLevel,
+  isTensionSeverity,
+  isTensionStatus,
+  isControlStatus,
+  FRAMEWORK_IDS,
+  TRUSTWORTHY_AI_REQUIREMENTS,
+  TRUSTWORTHY_AI_REQUIREMENT_LABELS,
+  RISK_LEVELS,
+  TENSION_SEVERITIES,
+  TENSION_STATUSES,
+  CONTROL_STATUSES,
+  validate,
+  validateOrThrow,
+  getFieldErrors,
+  CreateTensionInputSchema,
+  UpdateTensionInputSchema,
+} from '@/types/compliance'
 
 // ============================================================================
 // API Client
 // ============================================================================
 
 export const complianceApi = {
-  // Framework & Controls
-  listFrameworks: (params?: { enabled?: boolean }) =>
-    api.get<ComplianceFramework[]>('/v1/compliance/frameworks', { params }),
+  // ========== Dashboard ==========
+  getDashboard: () =>
+    api.get<ApiResponse<DashboardData>>('/dashboard').then(r => r.data),
 
-  getFramework: (frameworkId: string) =>
-    api.get<ComplianceFramework>(`/v1/compliance/frameworks/${frameworkId}`),
+  getKPIs: () =>
+    api.get<ApiResponse<DashboardKPIs>>('/dashboard/kpis').then(r => r.data),
 
+  getFrameworkScores: () =>
+    api.get<ApiResponse<FrameworkScore[]>>('/dashboard/frameworks').then(r => r.data),
+
+  getRequirementScores: () =>
+    api.get<ApiResponse<RequirementScore[]>>('/dashboard/requirements').then(r => r.data),
+
+  getRecentAlerts: (limit = 10) =>
+    api.get<ApiResponse<ComplianceAlert[]>>(`/dashboard/alerts?limit=${limit}`).then(r => r.data),
+
+  acknowledgeAlert: (alertId: string) =>
+    api.post<ApiResponse<ComplianceAlert>>(`/dashboard/alerts/${alertId}/acknowledge`).then(r => r.data),
+
+  getRiskDistribution: () =>
+    api.get<ApiResponse<RiskDistribution[]>>('/dashboard/risk-distribution').then(r => r.data),
+
+  // ========== Controls ==========
   listControls: (params?: {
-    frameworkId?: string
-    category?: string
-    riskLevel?: string
-    requirement?: TrustworthyAIRequirement
+    frameworks?: FrameworkId[]
+    riskLevels?: RiskLevel[]
+    statuses?: ControlStatus[]
+    requirements?: TrustworthyAIRequirement[]
     search?: string
     page?: number
-    limit?: number
-  }) => api.get<{ controls: ComplianceControl[]; total: number }>('/v1/compliance/controls', { params }),
+    pageSize?: number
+  }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.frameworks?.length) searchParams.set('frameworks', params.frameworks.join(','))
+    if (params?.riskLevels?.length) searchParams.set('riskLevels', params.riskLevels.join(','))
+    if (params?.statuses?.length) searchParams.set('statuses', params.statuses.join(','))
+    if (params?.requirements?.length) searchParams.set('requirements', params.requirements.join(','))
+    if (params?.search) searchParams.set('search', params.search)
+    if (params?.page) searchParams.set('page', String(params.page))
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize))
+    const qs = searchParams.toString()
+    return api.get<ApiResponse<ComplianceControl[]>>(`/controls${qs ? `?${qs}` : ''}`).then(r => r.data)
+  },
 
   getControl: (controlId: string) =>
-    api.get<ComplianceControl>(`/v1/compliance/controls/${controlId}`),
+    api.get<ApiResponse<ComplianceControl>>(`/controls/${controlId}`).then(r => r.data),
 
-  // Dashboard & Visualization
-  getDashboard: (tenantId: string, frameworks?: string[]) =>
-    api.get<ComplianceDashboardData>('/v1/compliance/visualization/dashboard', {
-      params: { tenantId, frameworks: frameworks?.join(',') },
-    }),
+  getControlStats: () =>
+    api.get<ApiResponse<{
+      total: number
+      byStatus: Record<ControlStatus, number>
+      byRiskLevel: Record<RiskLevel, number>
+      byFramework: Record<FrameworkId, number>
+    }>>('/controls/stats').then(r => r.data),
 
-  getSankeyData: (tenantId: string, type?: 'requirements' | 'frameworks') =>
-    api.get<SankeyData>('/v1/compliance/visualization/sankey', {
-      params: { tenantId, type },
-    }),
+  updateControlStatus: (controlId: string, status: ControlStatus, evidence?: string) =>
+    api.patch<ApiResponse<ComplianceControl>>(`/controls/${controlId}/status`, { status, evidence }).then(r => r.data),
 
-  getHeatmapData: (tenantId: string, type?: 'coverage' | 'cross-framework') =>
-    api.get<HeatmapData>('/v1/compliance/visualization/heatmap', {
-      params: { tenantId, type },
-    }),
+  addControlEvidence: (controlId: string, evidence: string) =>
+    api.post<ApiResponse<ComplianceControl>>(`/controls/${controlId}/evidence`, { evidence }).then(r => r.data),
 
-  getRadarData: (tenantId: string, type?: 'frameworks' | 'requirements' | 'tenant') =>
-    api.get<RadarData>('/v1/compliance/visualization/radar', {
-      params: { tenantId, type },
-    }),
+  // ========== Tensions ==========
+  listTensions: (params?: {
+    severities?: TensionSeverity[]
+    statuses?: TensionStatus[]
+    requirements?: TrustworthyAIRequirement[]
+    aiSystemId?: string
+    page?: number
+    pageSize?: number
+  }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.severities?.length) searchParams.set('severities', params.severities.join(','))
+    if (params?.statuses?.length) searchParams.set('statuses', params.statuses.join(','))
+    if (params?.requirements?.length) searchParams.set('requirements', params.requirements.join(','))
+    if (params?.aiSystemId) searchParams.set('aiSystemId', params.aiSystemId)
+    if (params?.page) searchParams.set('page', String(params.page))
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize))
+    const qs = searchParams.toString()
+    return api.get<ApiResponse<EthicalTension[]>>(`/tensions${qs ? `?${qs}` : ''}`).then(r => r.data)
+  },
 
-  // Trustworthiness Assessment
-  listTrustworthinessAssessments: (params?: { aiSystemId?: string }) =>
-    api.get<TrustworthinessAssessment[]>('/v1/compliance/trustworthiness/assessments', { params }),
+  getTension: (tensionId: string) =>
+    api.get<ApiResponse<EthicalTension>>(`/tensions/${tensionId}`).then(r => r.data),
 
-  getTrustworthinessAssessment: (assessmentId: string) =>
-    api.get<TrustworthinessAssessment>(`/v1/compliance/trustworthiness/assessments/${assessmentId}`),
+  getTensionStats: () =>
+    api.get<ApiResponse<{
+      total: number
+      bySeverity: Record<TensionSeverity, number>
+      byStatus: Record<TensionStatus, number>
+    }>>('/tensions/stats').then(r => r.data),
 
-  // Ethical Tensions
-  listTensions: (params?: { aiSystemId?: string; status?: string; severity?: string }) =>
-    api.get<EthicalTension[]>('/v1/compliance/tensions', { params }),
+  createTension: (data: CreateTensionInput) =>
+    api.post<ApiResponse<EthicalTension>>('/tensions', data).then(r => r.data),
 
-  // Z-Inspection
-  listZInspectionReports: (params?: { aiSystemId?: string }) =>
-    api.get<ZInspectionReport[]>('/v1/compliance/z-inspection/reports', { params }),
+  updateTension: (tensionId: string, data: UpdateTensionInput) =>
+    api.patch<ApiResponse<EthicalTension>>(`/tensions/${tensionId}`, data).then(r => r.data),
 
-  // Cross-Framework Analysis
-  getCrossFrameworkMatrix: (tenantId: string) =>
-    api.get('/v1/compliance/analysis/cross-framework', { params: { tenantId } }),
+  deleteTension: (tensionId: string) =>
+    api.delete(`/tensions/${tensionId}`),
 
-  getFrameworkOverlap: (framework1: string, framework2: string) =>
-    api.get<CrossFrameworkAnalysis>('/v1/compliance/analysis/cross-framework/overlap', {
-      params: { framework1, framework2 },
-    }),
+  // ========== Z-Inspection ==========
+  listZInspectionReports: (params?: {
+    statuses?: ZInspectionStatus[]
+    aiSystemId?: string
+    page?: number
+    pageSize?: number
+  }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.statuses?.length) searchParams.set('statuses', params.statuses.join(','))
+    if (params?.aiSystemId) searchParams.set('aiSystemId', params.aiSystemId)
+    if (params?.page) searchParams.set('page', String(params.page))
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize))
+    const qs = searchParams.toString()
+    return api.get<ApiResponse<ZInspectionReport[]>>(`/z-inspection${qs ? `?${qs}` : ''}`).then(r => r.data)
+  },
 
-  getRequirementCoverage: () =>
-    api.get('/v1/compliance/analysis/requirement-coverage'),
+  getZInspectionReport: (reportId: string) =>
+    api.get<ApiResponse<{ report: ZInspectionReport; findings: ZInspectionFinding[] }>>(`/z-inspection/${reportId}`).then(r => r.data),
 
-  // Gap Analysis
-  runGapAnalysis: (tenantId: string) =>
-    api.get<GapAnalysis>('/v1/compliance/analysis/gap-analysis', { params: { tenantId } }),
+  getZInspectionStats: () =>
+    api.get<ApiResponse<{
+      totalReports: number
+      totalFindings: number
+      mappedControls: number
+      byStatus: Record<ZInspectionStatus, number>
+    }>>('/z-inspection/stats').then(r => r.data),
 
-  // Regulatory Monitoring
-  listRegulatoryUpdates: (params?: { status?: string; sourceId?: string }) =>
-    api.get<RegulatoryUpdate[]>('/v1/compliance/learning/updates', { params }),
+  importZInspectionReport: (data: {
+    title: string
+    aiSystemId?: string
+    aiSystemName?: string
+    reportContent?: string
+    findings?: Array<{
+      category: string
+      description: string
+      severity: RiskLevel
+      affectedRequirement?: TrustworthyAIRequirement
+      recommendation?: string
+    }>
+  }) => api.post<ApiResponse<ZInspectionReport>>('/z-inspection', data).then(r => r.data),
+
+  updateZInspectionStatus: (reportId: string, status: ZInspectionStatus) =>
+    api.patch<ApiResponse<ZInspectionReport>>(`/z-inspection/${reportId}/status`, { status }).then(r => r.data),
+
+  mapFindingsToControls: (reportId: string, mappings: Array<{ findingId: string; controlIds: string[] }>) =>
+    api.post<ApiResponse<{ mapped: boolean }>>(`/z-inspection/${reportId}/map`, { mappings }).then(r => r.data),
+
+  deleteZInspectionReport: (reportId: string) =>
+    api.delete(`/z-inspection/${reportId}`),
+
+  // ========== Regulatory ==========
+  listRegulatorySources: () =>
+    api.get<ApiResponse<RegulatorySource[]>>('/regulatory/sources').then(r => r.data),
+
+  createRegulatorySource: (data: {
+    name: string
+    sourceType: 'official_journal' | 'regulator_website' | 'standards_body' | 'rss' | 'api'
+    url: string
+    jurisdiction: string
+    frameworkIds: FrameworkId[]
+    checkFrequency?: 'hourly' | 'daily' | 'weekly'
+  }) => api.post<ApiResponse<RegulatorySource>>('/regulatory/sources', data).then(r => r.data),
+
+  deleteRegulatorySource: (sourceId: string) =>
+    api.delete(`/regulatory/sources/${sourceId}`),
+
+  listRegulatoryUpdates: (params?: {
+    types?: RegulatoryUpdateType[]
+    statuses?: RegulatoryUpdateStatus[]
+    frameworkId?: FrameworkId
+    page?: number
+    pageSize?: number
+  }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.types?.length) searchParams.set('types', params.types.join(','))
+    if (params?.statuses?.length) searchParams.set('statuses', params.statuses.join(','))
+    if (params?.frameworkId) searchParams.set('frameworkId', params.frameworkId)
+    if (params?.page) searchParams.set('page', String(params.page))
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize))
+    const qs = searchParams.toString()
+    return api.get<ApiResponse<RegulatoryUpdate[]>>(`/regulatory/updates${qs ? `?${qs}` : ''}`).then(r => r.data)
+  },
+
+  getRegulatoryStats: () =>
+    api.get<ApiResponse<{
+      totalUpdates: number
+      byStatus: Record<RegulatoryUpdateStatus, number>
+      byType: Record<RegulatoryUpdateType, number>
+    }>>('/regulatory/stats').then(r => r.data),
+
+  createRegulatoryUpdate: (data: {
+    sourceName: string
+    sourceId?: string
+    frameworkId?: FrameworkId
+    updateType: RegulatoryUpdateType
+    title: string
+    summary?: string
+    originalUrl?: string
+    effectiveDate?: string
+    impact?: string
+  }) => api.post<ApiResponse<RegulatoryUpdate>>('/regulatory/updates', data).then(r => r.data),
+
+  updateRegulatoryStatus: (updateId: string, status: RegulatoryUpdateStatus) =>
+    api.patch<ApiResponse<RegulatoryUpdate>>(`/regulatory/updates/${updateId}/status`, { status }).then(r => r.data),
 }
 
 export default complianceApi

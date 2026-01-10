@@ -7,20 +7,19 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   ShieldCheck,
   CheckCircle2,
   AlertTriangle,
   Clock,
-  TrendingUp,
-  TrendingDown,
   XCircle,
   BarChart3,
   ExternalLink,
   FileText,
   RefreshCw,
   ChevronRight,
+  Loader2,
 } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -47,44 +46,41 @@ import { useTheme } from '@/stores/theme-store'
 import { useThemeClasses } from '@/hooks/useThemeClasses'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
+import { complianceApi, DashboardData, ComplianceAlert } from '@/lib/compliance-api'
 
-// Mock data for the dashboard
-const dashboardData = {
+// Default/fallback data for the dashboard
+const defaultDashboardData: DashboardData = {
   kpis: {
-    overallScore: 72,
-    scoreChange: 5.2,
+    overallScore: 0,
+    scoreChange: 0,
     totalControls: 688,
-    implementedControls: 495,
-    criticalGaps: 12,
-    upcomingDeadlines: 3,
+    implementedControls: 0,
+    criticalGaps: 0,
+    upcomingDeadlines: 0,
   },
   frameworkScores: [
-    { frameworkId: 'iso_27001', frameworkName: 'ISO 27001', score: 85, controlCount: 93, implementedCount: 79 },
-    { frameworkId: 'gdpr', frameworkName: 'GDPR', score: 78, controlCount: 220, implementedCount: 172 },
-    { frameworkId: 'eu_ai_act', frameworkName: 'EU AI Act', score: 65, controlCount: 149, implementedCount: 97 },
-    { frameworkId: 'nis2', frameworkName: 'NIS2', score: 71, controlCount: 112, implementedCount: 80 },
-    { frameworkId: 'soc2', frameworkName: 'SOC 2', score: 82, controlCount: 64, implementedCount: 52 },
-    { frameworkId: 'iso_27701', frameworkName: 'ISO 27701', score: 68, controlCount: 50, implementedCount: 34 },
+    { frameworkId: 'iso_27001', frameworkName: 'ISO 27001', score: 0, controlCount: 93, implementedCount: 0, criticalGaps: 0 },
+    { frameworkId: 'gdpr', frameworkName: 'GDPR', score: 0, controlCount: 220, implementedCount: 0, criticalGaps: 0 },
+    { frameworkId: 'eu_ai_act', frameworkName: 'EU AI Act', score: 0, controlCount: 149, implementedCount: 0, criticalGaps: 0 },
+    { frameworkId: 'nis2', frameworkName: 'NIS2', score: 0, controlCount: 112, implementedCount: 0, criticalGaps: 0 },
+    { frameworkId: 'soc2', frameworkName: 'SOC 2', score: 0, controlCount: 64, implementedCount: 0, criticalGaps: 0 },
+    { frameworkId: 'iso_27701', frameworkName: 'ISO 27701', score: 0, controlCount: 50, implementedCount: 0, criticalGaps: 0 },
   ],
   requirementScores: [
-    { requirement: 'human_agency_oversight', label: 'Human Agency', score: 75, controlCount: 45 },
-    { requirement: 'technical_robustness_safety', label: 'Robustness', score: 82, controlCount: 62 },
-    { requirement: 'privacy_data_governance', label: 'Privacy', score: 78, controlCount: 85 },
-    { requirement: 'transparency', label: 'Transparency', score: 68, controlCount: 38 },
-    { requirement: 'diversity_fairness_nondiscrimination', label: 'Fairness', score: 55, controlCount: 28 },
-    { requirement: 'societal_environmental_wellbeing', label: 'Society', score: 62, controlCount: 22 },
-    { requirement: 'accountability', label: 'Accountability', score: 88, controlCount: 52 },
+    { requirement: 'human_agency_oversight', label: 'Human Agency', score: 0, controlCount: 45, implementedCount: 0 },
+    { requirement: 'technical_robustness_safety', label: 'Robustness', score: 0, controlCount: 62, implementedCount: 0 },
+    { requirement: 'privacy_data_governance', label: 'Privacy', score: 0, controlCount: 85, implementedCount: 0 },
+    { requirement: 'transparency', label: 'Transparency', score: 0, controlCount: 38, implementedCount: 0 },
+    { requirement: 'diversity_fairness_nondiscrimination', label: 'Fairness', score: 0, controlCount: 28, implementedCount: 0 },
+    { requirement: 'societal_environmental_wellbeing', label: 'Society', score: 0, controlCount: 22, implementedCount: 0 },
+    { requirement: 'accountability', label: 'Accountability', score: 0, controlCount: 52, implementedCount: 0 },
   ],
-  recentAlerts: [
-    { id: '1', type: 'gap', severity: 'critical' as const, message: 'EU AI Act Article 9 controls not implemented', createdAt: new Date().toISOString(), acknowledged: false },
-    { id: '2', type: 'deadline', severity: 'high' as const, message: 'NIS2 compliance deadline in 30 days', createdAt: new Date().toISOString(), acknowledged: false },
-    { id: '3', type: 'update', severity: 'medium' as const, message: 'New GDPR guidance published by EDPB', createdAt: new Date().toISOString(), acknowledged: true },
-  ],
+  recentAlerts: [],
   riskDistribution: [
-    { level: 'Critical', count: 12, percentage: 15 },
-    { level: 'High', count: 28, percentage: 25 },
-    { level: 'Medium', count: 45, percentage: 35 },
-    { level: 'Low', count: 35, percentage: 25 },
+    { level: 'critical', count: 0, percentage: 0 },
+    { level: 'high', count: 0, percentage: 0 },
+    { level: 'medium', count: 0, percentage: 0 },
+    { level: 'low', count: 0, percentage: 0 },
   ],
 }
 
@@ -107,14 +103,58 @@ const FRAMEWORK_COLORS = [
 export default function ComplianceDashboardPage() {
   const { isDark } = useTheme()
   const tc = useThemeClasses()
+  const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [dashboardData, setDashboardData] = useState<DashboardData>(defaultDashboardData)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchDashboard = useCallback(async () => {
+    try {
+      const response = await complianceApi.getDashboard()
+      if (response.success && response.data) {
+        setDashboardData(response.data)
+        setError(null)
+      }
+    } catch (err) {
+      console.error('Failed to fetch dashboard:', err)
+      setError('Failed to load dashboard data')
+    } finally {
+      setIsLoading(false)
+      setIsRefreshing(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchDashboard()
+  }, [fetchDashboard])
 
   const handleRefresh = () => {
     setIsRefreshing(true)
-    setTimeout(() => setIsRefreshing(false), 1000)
+    fetchDashboard()
+  }
+
+  const handleAcknowledgeAlert = async (alertId: string) => {
+    try {
+      await complianceApi.acknowledgeAlert(alertId)
+      // Refresh dashboard to get updated alerts
+      fetchDashboard()
+    } catch (err) {
+      console.error('Failed to acknowledge alert:', err)
+    }
   }
 
   const { kpis, frameworkScores, requirementScores, recentAlerts, riskDistribution } = dashboardData
+
+  if (isLoading) {
+    return (
+      <div className="p-6 flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className={cn('h-8 w-8 animate-spin', tc.accentCyan)} />
+          <p className={tc.textMuted}>Loading compliance dashboard...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -354,7 +394,10 @@ export default function ComplianceDashboardPage() {
                   </div>
                 </div>
                 {!alert.acknowledged && (
-                  <button className={cn('text-sm font-medium px-3 py-1 rounded-lg', tc.buttonGhost)}>
+                  <button
+                    onClick={() => handleAcknowledgeAlert(alert.id)}
+                    className={cn('text-sm font-medium px-3 py-1 rounded-lg', tc.buttonGhost)}
+                  >
                     Acknowledge
                   </button>
                 )}

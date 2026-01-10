@@ -7,6 +7,82 @@
 
 import { useTheme } from '@/stores/theme-store'
 
+// ============================================================================
+// Theme Color Constants for Charts and Visualizations
+// ============================================================================
+
+/**
+ * Theme-aware color palette for charts, graphs, and visualizations.
+ * Use these for consistent colors across all data visualizations.
+ */
+export const THEME_COLORS = {
+  /** Risk level colors */
+  risk: {
+    critical: { dark: '#ef4444', light: '#dc2626' },
+    high: { dark: '#f97316', light: '#ea580c' },
+    medium: { dark: '#eab308', light: '#ca8a04' },
+    low: { dark: '#22c55e', light: '#16a34a' },
+  },
+  /** Status colors */
+  status: {
+    success: { dark: '#22c55e', light: '#16a34a' },
+    warning: { dark: '#eab308', light: '#ca8a04' },
+    error: { dark: '#ef4444', light: '#dc2626' },
+    info: { dark: '#3b82f6', light: '#2563eb' },
+    neutral: { dark: '#6b7280', light: '#4b5563' },
+  },
+  /** Framework color palette for multi-series charts */
+  framework: [
+    { dark: '#4faeca', light: '#0891b2' }, // Cyan
+    { dark: '#3b82f6', light: '#2563eb' }, // Blue
+    { dark: '#8b5cf6', light: '#7c3aed' }, // Purple
+    { dark: '#ec4899', light: '#db2777' }, // Pink
+    { dark: '#14b8a6', light: '#0d9488' }, // Teal
+    { dark: '#f59e0b', light: '#d97706' }, // Amber
+  ],
+  /** Accent colors */
+  accent: {
+    cyan: { dark: '#4faeca', light: '#0891b2' },
+    brown: { dark: '#a3866a', light: '#78716c' },
+  },
+  /** Background colors for chart areas */
+  chartBg: {
+    primary: { dark: '#0f172a', light: '#f8fafc' },
+    secondary: { dark: '#1e293b', light: '#ffffff' },
+    tertiary: { dark: '#334155', light: '#f1f5f9' },
+  },
+  /** Grid and axis colors */
+  grid: {
+    line: { dark: '#334155', light: '#e2e8f0' },
+    text: { dark: '#94a3b8', light: '#64748b' },
+  },
+} as const
+
+/**
+ * Get a risk level color based on theme
+ */
+export function getRiskColor(level: 'critical' | 'high' | 'medium' | 'low', isDark: boolean): string {
+  return isDark ? THEME_COLORS.risk[level].dark : THEME_COLORS.risk[level].light
+}
+
+/**
+ * Get a status color based on theme
+ */
+export function getStatusColor(status: 'success' | 'warning' | 'error' | 'info' | 'neutral', isDark: boolean): string {
+  return isDark ? THEME_COLORS.status[status].dark : THEME_COLORS.status[status].light
+}
+
+/**
+ * Get framework colors array for the current theme
+ */
+export function getFrameworkColors(isDark: boolean): string[] {
+  return THEME_COLORS.framework.map(c => isDark ? c.dark : c.light)
+}
+
+// ============================================================================
+// Theme Classes Hook
+// ============================================================================
+
 export function useThemeClasses() {
   const { isDark } = useTheme()
 
@@ -102,3 +178,57 @@ export function useThemeClasses() {
  * Type for theme class keys
  */
 export type ThemeClassKey = keyof ReturnType<typeof useThemeClasses>
+
+// ============================================================================
+// Theme Colors Hook for Charts
+// ============================================================================
+
+/**
+ * Hook that returns theme-aware colors for charts and visualizations.
+ * Use this in components that need direct color values (not CSS classes).
+ */
+export function useThemeColors() {
+  const { isDark } = useTheme()
+
+  return {
+    isDark,
+    /** Risk level colors */
+    risk: {
+      critical: getRiskColor('critical', isDark),
+      high: getRiskColor('high', isDark),
+      medium: getRiskColor('medium', isDark),
+      low: getRiskColor('low', isDark),
+    },
+    /** Status colors */
+    status: {
+      success: getStatusColor('success', isDark),
+      warning: getStatusColor('warning', isDark),
+      error: getStatusColor('error', isDark),
+      info: getStatusColor('info', isDark),
+      neutral: getStatusColor('neutral', isDark),
+    },
+    /** Framework colors for multi-series charts */
+    framework: getFrameworkColors(isDark),
+    /** Accent colors */
+    accent: {
+      cyan: isDark ? THEME_COLORS.accent.cyan.dark : THEME_COLORS.accent.cyan.light,
+      brown: isDark ? THEME_COLORS.accent.brown.dark : THEME_COLORS.accent.brown.light,
+    },
+    /** Chart background colors */
+    chartBg: {
+      primary: isDark ? THEME_COLORS.chartBg.primary.dark : THEME_COLORS.chartBg.primary.light,
+      secondary: isDark ? THEME_COLORS.chartBg.secondary.dark : THEME_COLORS.chartBg.secondary.light,
+      tertiary: isDark ? THEME_COLORS.chartBg.tertiary.dark : THEME_COLORS.chartBg.tertiary.light,
+    },
+    /** Grid and axis colors */
+    grid: {
+      line: isDark ? THEME_COLORS.grid.line.dark : THEME_COLORS.grid.line.light,
+      text: isDark ? THEME_COLORS.grid.text.dark : THEME_COLORS.grid.text.light,
+    },
+  }
+}
+
+/**
+ * Type for theme colors
+ */
+export type ThemeColors = ReturnType<typeof useThemeColors>

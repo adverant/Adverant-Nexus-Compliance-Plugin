@@ -17,18 +17,31 @@ import {
   PaginationParams,
   PaginatedResponse,
 } from '../types';
+import {
+  validateCreateTensionInput,
+  validateUpdateTensionInput,
+  validateResolveTensionInput,
+  validateStakeholderPerspectiveInput,
+} from '../validation/tension-schemas';
+
+// Re-export ValidationError for consumers of this service
+export { ValidationError } from '../validation/tension-schemas';
 
 export class TensionService {
   constructor(private pool: Pool) {}
 
   /**
    * Create a new ethical tension
+   * @throws {ValidationError} If input validation fails
    */
   async createTension(
     tenantId: string,
     input: CreateTensionInput,
     createdBy?: string
   ): Promise<EthicalTension> {
+    // Validate input before database operation
+    const validatedInput = validateCreateTensionInput(input);
+
     const id = uuidv4();
 
     const result = await this.pool.query(
@@ -42,19 +55,19 @@ export class TensionService {
       [
         id,
         tenantId,
-        input.aiSystemId,
-        input.scenarioId || null,
-        input.title,
-        input.description,
-        input.valueA,
-        input.valueADescription || null,
-        input.valueB,
-        input.valueBDescription || null,
-        input.tensionType,
-        input.requirementA || null,
-        input.requirementB || null,
-        JSON.stringify(input.affectedStakeholders || []),
-        input.severity || 'moderate',
+        validatedInput.aiSystemId,
+        validatedInput.scenarioId || null,
+        validatedInput.title,
+        validatedInput.description,
+        validatedInput.valueA,
+        validatedInput.valueADescription || null,
+        validatedInput.valueB,
+        validatedInput.valueBDescription || null,
+        validatedInput.tensionType,
+        validatedInput.requirementA || null,
+        validatedInput.requirementB || null,
+        JSON.stringify(validatedInput.affectedStakeholders || []),
+        validatedInput.severity || 'moderate',
         'identified',
         false,
         createdBy || null,
@@ -165,12 +178,16 @@ export class TensionService {
 
   /**
    * Update tension
+   * @throws {ValidationError} If input validation fails
    */
   async updateTension(
     tenantId: string,
     id: string,
     updates: Partial<CreateTensionInput>
   ): Promise<EthicalTension | null> {
+    // Validate input before database operation
+    const validatedUpdates = validateUpdateTensionInput(updates);
+
     const existing = await this.getTension(tenantId, id);
     if (!existing) {
       return null;
@@ -195,9 +212,9 @@ export class TensionService {
     };
 
     for (const [key, dbField] of Object.entries(fieldMappings)) {
-      const value = updates[key as keyof CreateTensionInput];
+      const value = validatedUpdates[key as keyof typeof validatedUpdates];
       if (value !== undefined) {
-        let dbValue = value;
+        let dbValue: unknown = value;
         if (Array.isArray(value)) {
           dbValue = JSON.stringify(value);
         }
@@ -237,6 +254,7 @@ export class TensionService {
 
   /**
    * Resolve a tension
+   * @throws {ValidationError} If input validation fails
    */
   async resolveTension(
     tenantId: string,
@@ -244,6 +262,9 @@ export class TensionService {
     resolution: ResolveTensionInput,
     resolvedBy?: string
   ): Promise<EthicalTension | null> {
+    // Validate input before database operation
+    const validatedResolution = validateResolveTensionInput(resolution);
+
     const result = await this.pool.query(
       `UPDATE ethical_tensions
        SET resolution_approach = $3,
@@ -259,11 +280,11 @@ export class TensionService {
       [
         id,
         tenantId,
-        resolution.resolutionApproach,
-        resolution.resolutionRationale,
-        resolution.tradeOffDecision || null,
-        resolution.residualConcerns || null,
-        resolution.newStatus,
+        validatedResolution.resolutionApproach,
+        validatedResolution.resolutionRationale,
+        validatedResolution.tradeOffDecision || null,
+        validatedResolution.residualConcerns || null,
+        validatedResolution.newStatus,
         resolvedBy || null,
       ]
     );
@@ -300,6 +321,7 @@ export class TensionService {
 
   /**
    * Add stakeholder perspective to a tension
+   * @throws {ValidationError} If input validation fails
    */
   async addStakeholderPerspective(
     tenantId: string,
@@ -307,6 +329,9 @@ export class TensionService {
     stakeholderId: string,
     perspective: Omit<StakeholderPerspective, 'stakeholderId'>
   ): Promise<EthicalTension | null> {
+    // Validate input before database operation
+    const validatedPerspective = validateStakeholderPerspectiveInput(perspective);
+
     const existing = await this.getTension(tenantId, tensionId);
     if (!existing) {
       return null;
@@ -314,7 +339,7 @@ export class TensionService {
 
     const updatedPerspectives = {
       ...existing.stakeholderPerspectives,
-      [stakeholderId]: { stakeholderId, ...perspective },
+      [stakeholderId]: { stakeholderId, ...validatedPerspective },
     };
 
     const updatedStakeholders = Array.from(

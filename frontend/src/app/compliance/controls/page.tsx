@@ -1,19 +1,21 @@
 /**
  * Control Library Page
  *
- * Browse, filter, and manage 688+ compliance controls across 6 frameworks.
- * Supports grid and table views with filtering by framework, category,
- * risk level, and EU requirement.
+ * Browse, filter, and manage compliance controls across 6 frameworks.
+ * Features:
+ * - Real API integration with error handling
+ * - Grid and table views with filtering
+ * - Framework, risk level, and EU requirement filters
+ * - Control detail modal
  */
 
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import {
   Search,
   Grid3X3,
   List,
-  ChevronRight,
   CheckCircle2,
   XCircle,
   Clock,
@@ -21,14 +23,32 @@ import {
   RefreshCw,
   ListChecks,
   X,
+  Loader2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/compliance'
 import { DataTable } from '@/components/coinest'
+import { InlineError } from '@/components/error-boundary'
+import { useToast } from '@/components/toast'
 import { useTheme } from '@/stores/theme-store'
 import { useThemeClasses } from '@/hooks/useThemeClasses'
+import { useApiQuery, useApiMutation } from '@/hooks/useApiQuery'
 import { cn, snakeToTitle } from '@/lib/utils'
+import {
+  complianceApi,
+  isRiskLevel,
+  isTrustworthyAIRequirement,
+  isFrameworkId,
+  TRUSTWORTHY_AI_REQUIREMENT_LABELS,
+} from '@/lib/compliance-api'
+import type {
+  ComplianceControl,
+  ControlStatus,
+} from '@/lib/compliance-api'
 
-// Mock data
+// ============================================================================
+// Constants
+// ============================================================================
+
 const FRAMEWORKS = [
   { id: 'all', name: 'All Frameworks' },
   { id: 'iso_27001', name: 'ISO 27001:2022' },
@@ -37,7 +57,7 @@ const FRAMEWORKS = [
   { id: 'nis2', name: 'NIS2 Directive' },
   { id: 'soc2', name: 'SOC 2 Type II' },
   { id: 'iso_27701', name: 'ISO 27701' },
-]
+] as const
 
 const RISK_LEVELS = [
   { id: 'all', name: 'All Risk Levels' },
@@ -45,7 +65,7 @@ const RISK_LEVELS = [
   { id: 'high', name: 'High' },
   { id: 'medium', name: 'Medium' },
   { id: 'low', name: 'Low' },
-]
+] as const
 
 const EU_REQUIREMENTS = [
   { id: 'all', name: 'All Requirements' },
@@ -56,33 +76,13 @@ const EU_REQUIREMENTS = [
   { id: 'diversity_fairness_nondiscrimination', name: 'Diversity, Fairness & Non-discrimination' },
   { id: 'societal_environmental_wellbeing', name: 'Societal & Environmental Wellbeing' },
   { id: 'accountability', name: 'Accountability' },
-]
+] as const
 
-const mockControls = [
-  { id: 'ISO-A.5.1', frameworkId: 'iso_27001', controlNumber: 'A.5.1', title: 'Policies for information security', description: 'Information security policy and topic-specific policies shall be defined...', category: 'Organizational Controls', riskLevel: 'high' as const, implementationStatus: 'implemented' as const, score: 85 },
-  { id: 'GDPR-5.1', frameworkId: 'gdpr', controlNumber: 'Art. 5.1', title: 'Principles relating to processing', description: 'Personal data shall be processed lawfully, fairly and in a transparent manner...', category: 'Principles', riskLevel: 'critical' as const, implementationStatus: 'implemented' as const, score: 92, euRequirement: 'privacy_data_governance' as const },
-  { id: 'AIACT-9.1', frameworkId: 'eu_ai_act', controlNumber: 'Art. 9.1', title: 'Risk management system', description: 'A risk management system shall be established, implemented, documented...', category: 'High-Risk Requirements', riskLevel: 'critical' as const, implementationStatus: 'in_progress' as const, score: 65, euRequirement: 'technical_robustness_safety' as const },
-  { id: 'NIS2-21.1', frameworkId: 'nis2', controlNumber: 'Art. 21.1', title: 'Cybersecurity risk-management measures', description: 'Essential and important entities shall take appropriate technical measures...', category: 'Risk Management', riskLevel: 'high' as const, implementationStatus: 'in_progress' as const, score: 72 },
-  { id: 'SOC2-CC6.1', frameworkId: 'soc2', controlNumber: 'CC6.1', title: 'Logical and Physical Access Controls', description: 'The entity implements logical access security software...', category: 'Common Criteria', riskLevel: 'high' as const, implementationStatus: 'implemented' as const, score: 88 },
-  { id: 'ISO27701-A.7.2', frameworkId: 'iso_27701', controlNumber: 'A.7.2', title: 'Conditions for collection', description: 'The organization shall determine and document that processing is lawful...', category: 'PIMS Specific', riskLevel: 'high' as const, implementationStatus: 'implemented' as const, score: 82, euRequirement: 'privacy_data_governance' as const },
-  { id: 'AIACT-10.1', frameworkId: 'eu_ai_act', controlNumber: 'Art. 10.1', title: 'Data and data governance', description: 'High-risk AI systems which make use of techniques involving training...', category: 'High-Risk Requirements', riskLevel: 'critical' as const, implementationStatus: 'not_started' as const, score: 0, euRequirement: 'privacy_data_governance' as const },
-  { id: 'GDPR-25.1', frameworkId: 'gdpr', controlNumber: 'Art. 25.1', title: 'Data protection by design and default', description: 'Taking into account the state of the art, the cost of implementation...', category: 'Data Protection', riskLevel: 'high' as const, implementationStatus: 'in_progress' as const, score: 55, euRequirement: 'privacy_data_governance' as const },
-]
+// ============================================================================
+// Helper Components
+// ============================================================================
 
-interface Control {
-  id: string
-  frameworkId: string
-  controlNumber: string
-  title: string
-  description: string
-  category: string
-  riskLevel: 'critical' | 'high' | 'medium' | 'low'
-  implementationStatus: 'not_started' | 'in_progress' | 'implemented' | 'not_applicable'
-  score?: number
-  euRequirement?: string
-}
-
-function StatusIcon({ status }: { status: string }) {
+function StatusIcon({ status }: { status: ControlStatus | string }) {
   const { isDark } = useTheme()
   switch (status) {
     case 'implemented':
@@ -96,8 +96,10 @@ function StatusIcon({ status }: { status: string }) {
   }
 }
 
-function ControlCard({ control, onClick }: { control: Control; onClick: () => void }) {
+function ControlCard({ control, onClick }: { control: ComplianceControl; onClick: () => void }) {
   const tc = useThemeClasses()
+  // Get first mapped requirement if available
+  const primaryRequirement = control.mappedRequirements[0]
 
   return (
     <div
@@ -115,7 +117,7 @@ function ControlCard({ control, onClick }: { control: Control; onClick: () => vo
             {control.title}
           </h3>
         </div>
-        <StatusIcon status={control.implementationStatus} />
+        <StatusIcon status={control.status} />
       </div>
       <p className={cn('text-xs line-clamp-2 mb-3', tc.textMuted)}>
         {control.description}
@@ -130,30 +132,12 @@ function ControlCard({ control, onClick }: { control: Control; onClick: () => vo
         )}>
           {control.riskLevel}
         </span>
-        {control.euRequirement && (
+        {primaryRequirement && (
           <span className={cn('badge text-xs', tc.badgeInfo)}>
-            {snakeToTitle(control.euRequirement).slice(0, 15)}...
+            {snakeToTitle(primaryRequirement).slice(0, 15)}...
           </span>
         )}
       </div>
-      {control.score !== undefined && control.score > 0 && (
-        <div className="mt-3">
-          <div className={cn('flex justify-between text-xs mb-1', tc.textMuted)}>
-            <span>Score</span>
-            <span className="font-medium">{control.score}%</span>
-          </div>
-          <div className={cn('h-1.5 w-full overflow-hidden rounded-full', tc.bgTertiary)}>
-            <div
-              className={cn(
-                'h-full transition-all',
-                control.score >= 80 ? 'bg-green-500' :
-                control.score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
-              )}
-              style={{ width: `${control.score}%` }}
-            />
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -162,14 +146,25 @@ function ControlDetailModal({
   control,
   open,
   onClose,
+  onUpdateStatus,
+  isUpdating,
 }: {
-  control: Control | null
+  control: ComplianceControl | null
   open: boolean
   onClose: () => void
+  onUpdateStatus: (controlId: string, status: ControlStatus) => Promise<void>
+  isUpdating: boolean
 }) {
   const tc = useThemeClasses()
 
   if (!open || !control) return null
+
+  const handleStatusChange = async (newStatus: ControlStatus) => {
+    await onUpdateStatus(control.id, newStatus)
+  }
+
+  // Get first mapped requirement if available
+  const primaryRequirement = control.mappedRequirements[0]
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -203,7 +198,7 @@ function ControlDetailModal({
           )}>
             {control.riskLevel}
           </span>
-          <StatusIcon status={control.implementationStatus} />
+          <StatusIcon status={control.status} />
         </div>
         <h2 className={cn('text-xl font-bold mb-2', tc.textPrimary)}>{control.title}</h2>
         <p className={cn('text-sm mb-6', tc.textMuted)}>
@@ -217,44 +212,44 @@ function ControlDetailModal({
             <p className={cn('text-sm', tc.textSecondary)}>{control.description}</p>
           </div>
 
-          {control.euRequirement && (
+          {primaryRequirement && (
             <div>
               <h4 className={cn('font-medium mb-2', tc.textPrimary)}>EU Trustworthy AI Requirement</h4>
               <span className={cn('badge', tc.badgeInfo)}>
-                {snakeToTitle(control.euRequirement)}
+                {TRUSTWORTHY_AI_REQUIREMENT_LABELS[primaryRequirement] || snakeToTitle(primaryRequirement)}
               </span>
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <h4 className={cn('font-medium mb-2', tc.textPrimary)}>Implementation Status</h4>
-              <div className="flex items-center gap-2">
-                <StatusIcon status={control.implementationStatus} />
-                <span className={cn('text-sm capitalize', tc.textSecondary)}>
-                  {control.implementationStatus.replace(/_/g, ' ')}
-                </span>
-              </div>
+          <div>
+            <h4 className={cn('font-medium mb-2', tc.textPrimary)}>Implementation Status</h4>
+            <div className="flex items-center gap-2">
+              <StatusIcon status={control.status} />
+              <span className={cn('text-sm capitalize', tc.textSecondary)}>
+                {control.status.replace(/_/g, ' ')}
+              </span>
             </div>
-
-            {control.score !== undefined && (
-              <div>
-                <h4 className={cn('font-medium mb-2', tc.textPrimary)}>Assessment Score</h4>
-                <div className="flex items-center gap-2">
-                  <span className={cn('text-2xl font-bold', tc.textPrimary)}>{control.score}%</span>
-                  <div className={cn('flex-1 h-2 overflow-hidden rounded-full', tc.bgTertiary)}>
-                    <div
-                      className={cn(
-                        'h-full',
-                        control.score >= 80 ? 'bg-green-500' :
-                        control.score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
-                      )}
-                      style={{ width: `${control.score}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Status Update Buttons */}
+            <div className="flex gap-2 mt-2">
+              {control.status !== 'implemented' && (
+                <button
+                  onClick={() => handleStatusChange('implemented')}
+                  disabled={isUpdating}
+                  className={cn('text-xs px-2 py-1 rounded', tc.buttonSecondary, 'disabled:opacity-50')}
+                >
+                  {isUpdating ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Mark Implemented'}
+                </button>
+              )}
+              {control.status === 'not_started' && (
+                <button
+                  onClick={() => handleStatusChange('in_progress')}
+                  disabled={isUpdating}
+                  className={cn('text-xs px-2 py-1 rounded', tc.buttonSecondary, 'disabled:opacity-50')}
+                >
+                  Start Progress
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -272,45 +267,121 @@ function ControlDetailModal({
   )
 }
 
+// ============================================================================
+// Main Component
+// ============================================================================
+
 export default function ControlLibraryPage() {
-  const { isDark } = useTheme()
   const tc = useThemeClasses()
+  const { toast } = useToast()
   const [view, setView] = useState<'grid' | 'table'>('grid')
   const [search, setSearch] = useState('')
   const [framework, setFramework] = useState('all')
   const [riskLevel, setRiskLevel] = useState('all')
   const [requirement, setRequirement] = useState('all')
-  const [selectedControl, setSelectedControl] = useState<Control | null>(null)
+  const [selectedControl, setSelectedControl] = useState<ComplianceControl | null>(null)
 
-  const filteredControls = useMemo(() => {
-    return mockControls.filter((control) => {
-      if (framework !== 'all' && control.frameworkId !== framework) return false
-      if (riskLevel !== 'all' && control.riskLevel !== riskLevel) return false
-      if (requirement !== 'all' && control.euRequirement !== requirement) return false
-      if (search) {
-        const searchLower = search.toLowerCase()
-        if (
-          !control.title.toLowerCase().includes(searchLower) &&
-          !control.controlNumber.toLowerCase().includes(searchLower) &&
-          !control.description.toLowerCase().includes(searchLower)
-        ) {
-          return false
-        }
-      }
-      return true
-    })
+  // Build filter params
+  const filterParams = useMemo(() => {
+    const params: Parameters<typeof complianceApi.listControls>[0] = {}
+    if (framework !== 'all' && isFrameworkId(framework)) {
+      params.frameworks = [framework]
+    }
+    if (riskLevel !== 'all' && isRiskLevel(riskLevel)) {
+      params.riskLevels = [riskLevel]
+    }
+    if (requirement !== 'all' && isTrustworthyAIRequirement(requirement)) {
+      params.requirements = [requirement]
+    }
+    if (search.trim()) {
+      params.search = search.trim()
+    }
+    return params
   }, [framework, riskLevel, requirement, search])
+
+  // Fetch controls with API
+  const {
+    data: controls,
+    isLoading,
+    error,
+    refetch,
+  } = useApiQuery<ComplianceControl[]>(
+    () => complianceApi.listControls(filterParams),
+    {
+      deps: [filterParams],
+      onError: (message) => {
+        toast.error('Failed to load controls', message)
+      },
+    }
+  )
+
+  // Update control status mutation
+  const updateStatusMutation = useApiMutation<ComplianceControl, { controlId: string; status: ControlStatus }>(
+    ({ controlId, status }) => complianceApi.updateControlStatus(controlId, status),
+    {
+      onSuccess: () => {
+        toast.success('Status updated', 'Control status has been updated.')
+        refetch()
+      },
+      onError: (message) => {
+        toast.error('Failed to update status', message)
+      },
+    }
+  )
+
+  // Handle status update
+  const handleUpdateStatus = useCallback(async (controlId: string, status: ControlStatus) => {
+    await updateStatusMutation.mutate({ controlId, status })
+  }, [updateStatusMutation])
+
+  // Handle filter changes with type guards
+  const handleFrameworkChange = useCallback((value: string) => {
+    if (value === 'all' || isFrameworkId(value)) {
+      setFramework(value)
+    }
+  }, [])
+
+  const handleRiskLevelChange = useCallback((value: string) => {
+    if (value === 'all' || isRiskLevel(value)) {
+      setRiskLevel(value)
+    }
+  }, [])
+
+  const handleRequirementChange = useCallback((value: string) => {
+    if (value === 'all' || isTrustworthyAIRequirement(value)) {
+      setRequirement(value)
+    }
+  }, [])
+
+  // Control list
+  const controlList = controls || []
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="p-6 flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className={cn('h-8 w-8 animate-spin', tc.accentCyan)} />
+          <p className={tc.textMuted}>Loading compliance controls...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
       <PageHeader
         title="Control Library"
-        description="688 controls across 6 regulatory frameworks"
+        description={`${controlList.length} controls across ${FRAMEWORKS.length - 1} regulatory frameworks`}
         icon={<ListChecks className={cn('h-6 w-6', tc.accentCyan)} />}
         actions={
           <div className="flex items-center gap-3">
-            <button className={cn('flex items-center gap-2 px-4 py-2 rounded-lg', tc.buttonSecondary)}>
+            <button
+              onClick={() => refetch()}
+              className={cn('flex items-center gap-2 px-4 py-2 rounded-lg', tc.buttonSecondary)}
+              title="Refresh"
+            >
               <RefreshCw className="h-4 w-4" />
               Refresh
             </button>
@@ -321,6 +392,11 @@ export default function ControlLibraryPage() {
           </div>
         }
       />
+
+      {/* Error State */}
+      {error && (
+        <InlineError message={error} onRetry={refetch} />
+      )}
 
       {/* Filters */}
       <div className={cn('rounded-xl border p-4', tc.card)}>
@@ -342,7 +418,7 @@ export default function ControlLibraryPage() {
           {/* Framework Filter */}
           <select
             value={framework}
-            onChange={(e) => setFramework(e.target.value)}
+            onChange={(e) => handleFrameworkChange(e.target.value)}
             className={cn('px-4 py-2 rounded-lg border', tc.input)}
           >
             {FRAMEWORKS.map((f) => (
@@ -353,7 +429,7 @@ export default function ControlLibraryPage() {
           {/* Risk Level Filter */}
           <select
             value={riskLevel}
-            onChange={(e) => setRiskLevel(e.target.value)}
+            onChange={(e) => handleRiskLevelChange(e.target.value)}
             className={cn('px-4 py-2 rounded-lg border', tc.input)}
           >
             {RISK_LEVELS.map((r) => (
@@ -364,7 +440,7 @@ export default function ControlLibraryPage() {
           {/* EU Requirement Filter */}
           <select
             value={requirement}
-            onChange={(e) => setRequirement(e.target.value)}
+            onChange={(e) => handleRequirementChange(e.target.value)}
             className={cn('px-4 py-2 rounded-lg border', tc.input)}
           >
             {EU_REQUIREMENTS.map((r) => (
@@ -398,97 +474,115 @@ export default function ControlLibraryPage() {
 
       {/* Results count */}
       <div className={cn('text-sm', tc.textMuted)}>
-        Showing {filteredControls.length} of {mockControls.length} controls
+        Showing {controlList.length} controls
       </div>
 
-      {/* Controls Display */}
-      {view === 'grid' ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredControls.map((control) => (
-            <ControlCard
-              key={control.id}
-              control={control}
-              onClick={() => setSelectedControl(control)}
-            />
-          ))}
+      {/* Empty State */}
+      {controlList.length === 0 && !error ? (
+        <div className={cn('rounded-xl border p-12 text-center', tc.card)}>
+          <ListChecks className={cn('h-12 w-12 mx-auto mb-4', tc.textMuted)} />
+          <h3 className={cn('text-lg font-semibold mb-2', tc.textPrimary)}>No Controls Found</h3>
+          <p className={cn('text-sm mb-4', tc.textMuted)}>
+            {search || framework !== 'all' || riskLevel !== 'all' || requirement !== 'all'
+              ? 'No controls match your current filters. Try adjusting your search criteria.'
+              : 'No compliance controls have been defined yet.'}
+          </p>
+          {(search || framework !== 'all' || riskLevel !== 'all' || requirement !== 'all') && (
+            <button
+              onClick={() => {
+                setSearch('')
+                setFramework('all')
+                setRiskLevel('all')
+                setRequirement('all')
+              }}
+              className={cn('px-4 py-2 rounded-lg', tc.buttonSecondary)}
+            >
+              Clear Filters
+            </button>
+          )}
         </div>
-      ) : (
-        <DataTable
-          columns={[
-            {
-              key: 'controlNumber' as keyof Control,
-              header: 'Control ID',
-              sortable: true,
-              render: (value) => (
-                <span className={cn('badge', tc.badgeNeutral)}>{String(value)}</span>
-              ),
-            },
-            {
-              key: 'title' as keyof Control,
-              header: 'Title',
-              sortable: true,
-              render: (value) => (
-                <span className="max-w-[300px] truncate block">{String(value)}</span>
-              ),
-            },
-            {
-              key: 'frameworkId' as keyof Control,
-              header: 'Framework',
-              sortable: true,
-              render: (value) => String(value).toUpperCase(),
-            },
-            {
-              key: 'riskLevel' as keyof Control,
-              header: 'Risk',
-              sortable: true,
-              render: (value) => {
-                const risk = String(value)
-                return (
-                  <span className={cn(
-                    'badge',
-                    risk === 'critical' ? tc.badgeCritical :
-                    risk === 'high' ? tc.badgeHigh :
-                    risk === 'medium' ? tc.badgeMedium :
-                    tc.badgeLow
-                  )}>
-                    {risk}
-                  </span>
-                )
-              },
-            },
-            {
-              key: 'implementationStatus' as keyof Control,
-              header: 'Status',
-              sortable: true,
-              render: (value) => (
-                <div className="flex items-center gap-2">
-                  <StatusIcon status={String(value)} />
-                  <span className="text-sm capitalize">{String(value).replace(/_/g, ' ')}</span>
-                </div>
-              ),
-            },
-            {
-              key: 'score' as keyof Control,
-              header: 'Score',
-              sortable: true,
-              render: (value) => {
-                const score = Number(value)
-                if (!score) return <span className={tc.textMuted}>-</span>
-                return (
-                  <span className={cn(
-                    'font-medium',
-                    score >= 80 ? 'text-green-500' :
-                    score >= 60 ? 'text-yellow-500' : 'text-red-500'
-                  )}>
-                    {score}%
-                  </span>
-                )
-              },
-            },
-          ]}
-          data={filteredControls as unknown as Record<string, unknown>[]}
-          onRowClick={(row) => setSelectedControl(row as unknown as Control)}
-        />
+      ) : controlList.length > 0 && (
+        <>
+          {/* Controls Display */}
+          {view === 'grid' ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {controlList.map((control) => (
+                <ControlCard
+                  key={control.id}
+                  control={control}
+                  onClick={() => setSelectedControl(control)}
+                />
+              ))}
+            </div>
+          ) : (
+            <DataTable
+              columns={[
+                {
+                  key: 'controlNumber',
+                  header: 'Control ID',
+                  sortable: true,
+                  render: (value) => (
+                    <span className={cn('badge', tc.badgeNeutral)}>{String(value)}</span>
+                  ),
+                },
+                {
+                  key: 'title',
+                  header: 'Title',
+                  sortable: true,
+                  render: (value) => (
+                    <span className="max-w-[300px] truncate block">{String(value)}</span>
+                  ),
+                },
+                {
+                  key: 'frameworkId',
+                  header: 'Framework',
+                  sortable: true,
+                  render: (value) => String(value).toUpperCase(),
+                },
+                {
+                  key: 'riskLevel',
+                  header: 'Risk',
+                  sortable: true,
+                  render: (value) => {
+                    const risk = String(value)
+                    return (
+                      <span className={cn(
+                        'badge',
+                        risk === 'critical' ? tc.badgeCritical :
+                        risk === 'high' ? tc.badgeHigh :
+                        risk === 'medium' ? tc.badgeMedium :
+                        tc.badgeLow
+                      )}>
+                        {risk}
+                      </span>
+                    )
+                  },
+                },
+                {
+                  key: 'status',
+                  header: 'Status',
+                  sortable: true,
+                  render: (value) => (
+                    <div className="flex items-center gap-2">
+                      <StatusIcon status={String(value)} />
+                      <span className="text-sm capitalize">{String(value).replace(/_/g, ' ')}</span>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'category',
+                  header: 'Category',
+                  sortable: true,
+                  render: (value) => (
+                    <span className="text-sm">{snakeToTitle(String(value))}</span>
+                  ),
+                },
+              ]}
+              data={controlList as unknown as Record<string, unknown>[]}
+              onRowClick={(row) => setSelectedControl(row as unknown as ComplianceControl)}
+            />
+          )}
+        </>
       )}
 
       {/* Control Detail Modal */}
@@ -496,6 +590,8 @@ export default function ControlLibraryPage() {
         control={selectedControl}
         open={!!selectedControl}
         onClose={() => setSelectedControl(null)}
+        onUpdateStatus={handleUpdateStatus}
+        isUpdating={updateStatusMutation.isLoading}
       />
     </div>
   )
