@@ -18,7 +18,6 @@ import {
   RefreshCw,
   Share2,
   Calendar,
-  Filter,
   Search,
   ChevronDown,
   FileBarChart,
@@ -31,19 +30,7 @@ import { useThemeClasses } from '@/hooks/useThemeClasses'
 import { cn } from '@/lib/utils'
 import { PageHeader } from '@/components/compliance'
 import { StatCard, StatGrid } from '@/components/coinest/StatCard'
-import { DataTable } from '@/components/coinest/DataTable'
 import { complianceApi } from '@/lib/compliance-api'
-
-// Hook to safely handle hydration
-function useHydration() {
-  const [isHydrated, setIsHydrated] = useState(false)
-
-  useEffect(() => {
-    setIsHydrated(true)
-  }, [])
-
-  return isHydrated
-}
 
 // Report types
 type ReportType = 'executive_summary' | 'full_audit' | 'gap_analysis' | 'remediation_plan' | 'board_presentation'
@@ -96,7 +83,6 @@ interface Report {
 }
 
 export default function ReportsPage() {
-  const isHydrated = useHydration()
   const tc = useThemeClasses()
 
   // State
@@ -209,154 +195,14 @@ export default function ReportsPage() {
     })
   }
 
-  // Show loading state until hydrated
-  if (!isHydrated) {
+  // Loading state
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-coinest-accent-cyan" />
       </div>
     )
   }
-
-  // Table columns
-  const columns = [
-    {
-      key: 'title',
-      header: 'Report',
-      sortable: true,
-      render: (_: unknown, row: Record<string, unknown>) => {
-        const report = row as unknown as Report
-        const Icon = REPORT_TYPE_ICONS[report.type]
-        return (
-          <div className="flex items-center gap-3">
-            <div className={cn('p-2 rounded-lg', tc.bgTertiary)}>
-              <Icon className="h-4 w-4 text-coinest-accent-cyan" />
-            </div>
-            <div>
-              <p className={cn('font-medium', tc.textPrimary)}>{report.title}</p>
-              <p className={cn('text-xs', tc.textMuted)}>
-                {REPORT_TYPE_LABELS[report.type]}
-                {report.framework && ` • ${report.framework}`}
-              </p>
-            </div>
-          </div>
-        )
-      },
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      sortable: true,
-      render: (_: unknown, row: Record<string, unknown>) => {
-        const report = row as unknown as Report
-        return (
-          <span className={cn('px-2 py-0.5 rounded text-xs font-medium', STATUS_COLORS[report.status])}>
-            {report.status === 'generating' && (
-              <Loader2 className="inline h-3 w-3 mr-1 animate-spin" />
-            )}
-            {report.status.charAt(0).toUpperCase() + report.status.slice(1)}
-          </span>
-        )
-      },
-    },
-    {
-      key: 'format',
-      header: 'Format',
-      render: (_: unknown, row: Record<string, unknown>) => {
-        const report = row as unknown as Report
-        return (
-          <span className={cn('text-sm uppercase', tc.textMuted)}>
-            {report.format}
-          </span>
-        )
-      },
-    },
-    {
-      key: 'createdAt',
-      header: 'Date',
-      sortable: true,
-      render: (_: unknown, row: Record<string, unknown>) => {
-        const report = row as unknown as Report
-        return (
-          <span className={cn('text-sm', tc.textMuted)}>
-            {formatDate(report.createdAt)}
-          </span>
-        )
-      },
-    },
-    {
-      key: 'fileSize',
-      header: 'Size',
-      render: (_: unknown, row: Record<string, unknown>) => {
-        const report = row as unknown as Report
-        return (
-          <span className={cn('text-sm', tc.textMuted)}>
-            {formatFileSize(report.fileSize)}
-          </span>
-        )
-      },
-    },
-    {
-      key: 'downloadCount',
-      header: 'Downloads',
-      sortable: true,
-      render: (_: unknown, row: Record<string, unknown>) => {
-        const report = row as unknown as Report
-        return (
-          <span className={cn('text-sm', tc.textMuted)}>
-            {report.downloadCount}
-          </span>
-        )
-      },
-    },
-    {
-      key: 'actions',
-      header: '',
-      render: (_: unknown, row: Record<string, unknown>) => {
-        const report = row as unknown as Report
-        return (
-          <div className="flex items-center gap-1">
-            {report.status === 'ready' && (
-              <>
-                <button
-                  className={cn('p-1.5 rounded', tc.buttonGhost)}
-                  title="View"
-                >
-                  <Eye className="h-4 w-4" />
-                </button>
-                <button
-                  className={cn('p-1.5 rounded', tc.buttonGhost)}
-                  title="Download"
-                >
-                  <Download className="h-4 w-4" />
-                </button>
-                <button
-                  className={cn('p-1.5 rounded', tc.buttonGhost)}
-                  title="Share"
-                >
-                  <Share2 className="h-4 w-4" />
-                </button>
-              </>
-            )}
-            {report.status === 'failed' && (
-              <button
-                className={cn('p-1.5 rounded', tc.buttonGhost)}
-                title="Regenerate"
-              >
-                <RefreshCw className="h-4 w-4" />
-              </button>
-            )}
-            <button
-              className={cn('p-1.5 rounded text-red-400', tc.buttonGhost)}
-              title="Delete"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          </div>
-        )
-      },
-    },
-  ]
 
   return (
     <div className="space-y-6">
@@ -454,13 +300,9 @@ export default function ReportsPage() {
         />
       </StatGrid>
 
-      {/* Reports Table */}
+      {/* Reports List */}
       <div className={cn('rounded-xl border', tc.border, tc.bgSecondary)}>
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-coinest-accent-cyan" />
-          </div>
-        ) : filteredReports.length === 0 ? (
+        {filteredReports.length === 0 ? (
           <div className="text-center py-12">
             <FileText className={cn('h-12 w-12 mx-auto mb-4', tc.textMuted)} />
             <p className={cn('text-lg font-medium mb-2', tc.textPrimary)}>No reports found</p>
@@ -478,10 +320,68 @@ export default function ReportsPage() {
             </Link>
           </div>
         ) : (
-          <DataTable
-            columns={columns}
-            data={filteredReports as unknown as Record<string, unknown>[]}
-          />
+          <div className={cn('divide-y', tc.border)}>
+            {filteredReports.map((report) => {
+              const Icon = REPORT_TYPE_ICONS[report.type]
+              return (
+                <div key={report.id} className={cn('p-4 flex items-center gap-4', tc.tableRow)}>
+                  {/* Icon */}
+                  <div className={cn('p-2 rounded-lg', tc.bgTertiary)}>
+                    <Icon className="h-5 w-5 text-coinest-accent-cyan" />
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className={cn('font-medium truncate', tc.textPrimary)}>{report.title}</p>
+                    <p className={cn('text-xs', tc.textMuted)}>
+                      {REPORT_TYPE_LABELS[report.type]}
+                      {report.framework && ` • ${report.framework}`}
+                      {' • '}
+                      {formatDate(report.createdAt)}
+                    </p>
+                  </div>
+
+                  {/* Status */}
+                  <span className={cn('px-2 py-0.5 rounded text-xs font-medium', STATUS_COLORS[report.status])}>
+                    {report.status === 'generating' && (
+                      <Loader2 className="inline h-3 w-3 mr-1 animate-spin" />
+                    )}
+                    {report.status.charAt(0).toUpperCase() + report.status.slice(1)}
+                  </span>
+
+                  {/* Size */}
+                  <span className={cn('text-sm w-16 text-right', tc.textMuted)}>
+                    {formatFileSize(report.fileSize)}
+                  </span>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1">
+                    {report.status === 'ready' && (
+                      <>
+                        <button className={cn('p-1.5 rounded', tc.buttonGhost)} title="View">
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button className={cn('p-1.5 rounded', tc.buttonGhost)} title="Download">
+                          <Download className="h-4 w-4" />
+                        </button>
+                        <button className={cn('p-1.5 rounded', tc.buttonGhost)} title="Share">
+                          <Share2 className="h-4 w-4" />
+                        </button>
+                      </>
+                    )}
+                    {report.status === 'failed' && (
+                      <button className={cn('p-1.5 rounded', tc.buttonGhost)} title="Regenerate">
+                        <RefreshCw className="h-4 w-4" />
+                      </button>
+                    )}
+                    <button className={cn('p-1.5 rounded text-red-400', tc.buttonGhost)} title="Delete">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         )}
       </div>
     </div>
