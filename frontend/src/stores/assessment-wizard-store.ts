@@ -418,17 +418,21 @@ export const useAssessmentWizardStore = create<AssessmentWizardStore>()(
 )
 
 // ============================================================================
-// Convenience Hooks - Direct selectors (no useShallow to avoid bundling issues)
+// Convenience Hooks - Direct selectors with stable action references
 // ============================================================================
 
 /**
- * Hook for wizard navigation state
+ * Hook for wizard navigation state.
+ * Uses getState() for actions to ensure stable references.
  */
 export const useWizardNavigation = () => {
   const currentStep = useAssessmentWizardStore((state) => state.currentStep)
-  const goToStep = useAssessmentWizardStore((state) => state.goToStep)
-  const nextStep = useAssessmentWizardStore((state) => state.nextStep)
-  const prevStep = useAssessmentWizardStore((state) => state.prevStep)
+
+  // Get stable action references from the store
+  const store = useAssessmentWizardStore.getState()
+  const goToStep = store.goToStep
+  const nextStep = store.nextStep
+  const prevStep = store.prevStep
 
   const currentStepIndex = WIZARD_STEPS.indexOf(currentStep)
 
@@ -445,13 +449,17 @@ export const useWizardNavigation = () => {
 }
 
 /**
- * Hook for framework step
+ * Hook for framework step.
+ * Uses getState() for actions to ensure stable references.
  */
 export const useFrameworkStep = () => {
   const data = useAssessmentWizardStore((state) => state.formData.framework)
-  const setData = useAssessmentWizardStore((state) => state.setFrameworkData)
   const validation = useAssessmentWizardStore((state) => state.validation.framework)
-  const validateStep = useAssessmentWizardStore((state) => state.validateStep)
+
+  // Get stable action references from the store
+  const store = useAssessmentWizardStore.getState()
+  const setData = store.setFrameworkData
+  const validateStep = store.validateStep
 
   return {
     data,
@@ -462,13 +470,17 @@ export const useFrameworkStep = () => {
 }
 
 /**
- * Hook for scope step
+ * Hook for scope step.
+ * Uses getState() for actions to ensure stable references.
  */
 export const useScopeStep = () => {
   const data = useAssessmentWizardStore((state) => state.formData.scope)
-  const setData = useAssessmentWizardStore((state) => state.setScopeData)
   const validation = useAssessmentWizardStore((state) => state.validation.scope)
-  const validateStep = useAssessmentWizardStore((state) => state.validateStep)
+
+  // Get stable action references from the store
+  const store = useAssessmentWizardStore.getState()
+  const setData = store.setScopeData
+  const validateStep = store.validateStep
 
   return {
     data,
@@ -479,13 +491,17 @@ export const useScopeStep = () => {
 }
 
 /**
- * Hook for AI config step
+ * Hook for AI config step.
+ * Uses getState() for actions to ensure stable references.
  */
 export const useAIConfigStep = () => {
   const data = useAssessmentWizardStore((state) => state.formData.aiConfig)
-  const setData = useAssessmentWizardStore((state) => state.setAIConfigData)
   const validation = useAssessmentWizardStore((state) => state.validation['ai-config'])
-  const validateStep = useAssessmentWizardStore((state) => state.validateStep)
+
+  // Get stable action references from the store
+  const store = useAssessmentWizardStore.getState()
+  const setData = store.setAIConfigData
+  const validateStep = store.validateStep
 
   return {
     data,
@@ -496,18 +512,22 @@ export const useAIConfigStep = () => {
 }
 
 /**
- * Hook for review step and submission
+ * Hook for review step and submission.
+ * Uses getState() for actions to ensure stable references.
  */
 export const useReviewStep = () => {
   const formData = useAssessmentWizardStore((state) => state.formData)
   const validation = useAssessmentWizardStore((state) => state.validation.review)
   const isSubmitting = useAssessmentWizardStore((state) => state.isSubmitting)
   const submitError = useAssessmentWizardStore((state) => state.submitError)
-  const setSubmitting = useAssessmentWizardStore((state) => state.setSubmitting)
-  const setSubmitError = useAssessmentWizardStore((state) => state.setSubmitError)
-  const buildAssessmentInput = useAssessmentWizardStore((state) => state.buildAssessmentInput)
-  const validateAll = useAssessmentWizardStore((state) => state.validateAll)
-  const reset = useAssessmentWizardStore((state) => state.reset)
+
+  // Get stable action references from the store
+  const store = useAssessmentWizardStore.getState()
+  const setSubmitting = store.setSubmitting
+  const setSubmitError = store.setSubmitError
+  const buildAssessmentInput = store.buildAssessmentInput
+  const validateAll = store.validateAll
+  const reset = store.reset
 
   return {
     formData,
@@ -523,12 +543,16 @@ export const useReviewStep = () => {
 }
 
 /**
- * Hook for checking if wizard has unsaved changes
+ * Hook for checking if wizard has unsaved changes.
+ * Uses getState() for actions to ensure stable references.
  */
 export const useWizardDirtyState = () => {
   const isDirty = useAssessmentWizardStore((state) => state.isDirty)
-  const markClean = useAssessmentWizardStore((state) => state.markClean)
-  const reset = useAssessmentWizardStore((state) => state.reset)
+
+  // Get stable action references from the store
+  const store = useAssessmentWizardStore.getState()
+  const markClean = store.markClean
+  const reset = store.reset
 
   return {
     isDirty,
