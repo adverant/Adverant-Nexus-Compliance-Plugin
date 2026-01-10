@@ -126,12 +126,20 @@ function applyThemeToDocument(theme: Theme): void {
 /**
  * Hook for easier consumption of theme store.
  * Uses direct selectors to prevent TDZ errors in minified bundles.
+ * Returns stable references to prevent infinite re-renders.
  */
 export const useTheme = () => {
+  // Use a single selector that returns a stable object shape
   const theme = useThemeStore((state) => state.theme)
   const isHydrated = useThemeStore((state) => state.isHydrated)
-  const toggleTheme = useThemeStore((state) => state.toggleTheme)
-  const setTheme = useThemeStore((state) => state.setTheme)
 
-  return { theme, isHydrated, toggleTheme, setTheme, isDark: theme === 'dark' }
+  // Get actions from the store directly (they're stable references)
+  const store = useThemeStore.getState()
+  const toggleTheme = store.toggleTheme
+  const setTheme = store.setTheme
+
+  // Compute isDark based on theme
+  const isDark = theme === 'dark'
+
+  return { theme, isHydrated, toggleTheme, setTheme, isDark }
 }
