@@ -103,14 +103,23 @@ const navigation: NavItem[] = [
 ]
 
 export function Sidebar() {
-  const pathname = usePathname()
+  const rawPathname = usePathname()
+  const pathname = rawPathname || '/compliance'
   const { isDark, toggleTheme } = useTheme()
   const tc = useThemeClasses()
 
+  // Helper function to determine if a nav item is active
+  const getIsActive = (itemHref: string): boolean => {
+    if (itemHref === '/compliance') {
+      return pathname === '/compliance'
+    }
+    return pathname === itemHref || pathname.startsWith(itemHref + '/')
+  }
+
   return (
-    <aside className={cn('w-64 border-r flex flex-col', tc.sidebarBg, tc.border)}>
+    <aside className={cn('w-64 h-screen border-r flex flex-col shrink-0', tc.sidebarBg, tc.border)}>
       {/* Plugin Header */}
-      <div className={cn('h-16 flex items-center px-6 border-b', tc.border)}>
+      <div className={cn('h-16 flex items-center px-6 border-b shrink-0', tc.border)}>
         <ShieldCheck className={cn('h-8 w-8', tc.accentCyan)} />
         <div className="ml-3">
           <h1 className={cn('text-lg font-bold', tc.textPrimary)}>Compliance</h1>
@@ -119,11 +128,9 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto min-h-0">
         {navigation.map((item, index) => {
-          const isActive =
-            pathname === item.href ||
-            (item.href !== '/compliance' && pathname.startsWith(item.href))
+          const isActive = getIsActive(item.href)
 
           return (
             <div key={item.name}>
@@ -164,7 +171,7 @@ export function Sidebar() {
       </nav>
 
       {/* Footer with Theme Toggle and Info */}
-      <div className={cn('p-4 border-t', tc.border)}>
+      <div className={cn('p-4 border-t shrink-0', tc.border)}>
         {/* Theme Toggle */}
         <button
           onClick={toggleTheme}
