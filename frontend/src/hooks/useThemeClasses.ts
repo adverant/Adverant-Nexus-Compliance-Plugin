@@ -5,6 +5,7 @@
  * Follows the Coinest dark theme + light theme counterparts.
  */
 
+import { useMemo } from 'react'
 import { useTheme } from '@/stores/theme-store'
 
 // ============================================================================
@@ -96,7 +97,7 @@ export function getFrameworkColors(isDark: boolean): string[] {
 export function useThemeClasses() {
   const { isDark } = useTheme()
 
-  return {
+  return useMemo(() => ({
     // Background colors
     bgPrimary: isDark ? 'bg-coinest-bg-primary' : 'bg-neutral-50',
     bgSecondary: isDark ? 'bg-coinest-bg-secondary' : 'bg-white',
@@ -181,7 +182,7 @@ export function useThemeClasses() {
     chartTooltip: isDark
       ? 'bg-coinest-bg-secondary border-coinest-border'
       : 'bg-white border-neutral-200',
-  }
+  }), [isDark])
 }
 
 /**
@@ -200,7 +201,7 @@ export type ThemeClassKey = keyof ReturnType<typeof useThemeClasses>
 export function useThemeColors() {
   const { isDark } = useTheme()
 
-  return {
+  return useMemo(() => ({
     isDark,
     /** Risk level colors */
     risk: {
@@ -245,7 +246,7 @@ export function useThemeColors() {
       societal_environmental_wellbeing: isDark ? THEME_COLORS.requirement.societal_environmental_wellbeing.dark : THEME_COLORS.requirement.societal_environmental_wellbeing.light,
       accountability: isDark ? THEME_COLORS.requirement.accountability.dark : THEME_COLORS.requirement.accountability.light,
     },
-  }
+  }), [isDark])
 }
 
 /**
