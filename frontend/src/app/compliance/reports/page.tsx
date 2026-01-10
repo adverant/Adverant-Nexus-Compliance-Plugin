@@ -34,6 +34,17 @@ import { StatCard, StatGrid } from '@/components/coinest/StatCard'
 import { DataTable } from '@/components/coinest/DataTable'
 import { complianceApi } from '@/lib/compliance-api'
 
+// Hook to safely handle hydration
+function useHydration() {
+  const [isHydrated, setIsHydrated] = useState(false)
+
+  useEffect(() => {
+    setIsHydrated(true)
+  }, [])
+
+  return isHydrated
+}
+
 // Report types
 type ReportType = 'executive_summary' | 'full_audit' | 'gap_analysis' | 'remediation_plan' | 'board_presentation'
 
@@ -85,6 +96,7 @@ interface Report {
 }
 
 export default function ReportsPage() {
+  const isHydrated = useHydration()
   const tc = useThemeClasses()
 
   // State
@@ -195,6 +207,15 @@ export default function ReportsPage() {
       month: 'short',
       day: 'numeric',
     })
+  }
+
+  // Show loading state until hydrated
+  if (!isHydrated) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-coinest-accent-cyan" />
+      </div>
+    )
   }
 
   // Table columns
