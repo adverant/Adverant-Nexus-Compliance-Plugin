@@ -2,9 +2,7 @@
  * Compliance Plugin Sidebar
  *
  * Navigation sidebar for the compliance plugin with theme toggle.
- * Supports both light and dark modes.
- *
- * Uses mounted state to prevent hydration mismatches between SSR and client.
+ * Uses static rendering to avoid hydration mismatches.
  */
 
 'use client'
@@ -28,9 +26,6 @@ import {
   ClipboardCheck,
   FileText,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { useTheme } from '@/stores/theme-store'
-import { useThemeClasses } from '@/hooks/useThemeClasses'
 
 interface NavItem {
   name: string
@@ -105,26 +100,66 @@ const navigation: NavItem[] = [
   },
 ]
 
-export function Sidebar() {
-  // Track mounted state to prevent hydration mismatch
-  const [mounted, setMounted] = useState(false)
-  const rawPathname = usePathname()
-  const pathname = rawPathname || '/compliance'
-  const { isDark, toggleTheme } = useTheme()
-  const tc = useThemeClasses()
+function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+  const isActive =
+    item.href === '/compliance'
+      ? pathname === '/compliance'
+      : pathname === item.href || pathname.startsWith(item.href + '/')
 
-  // Set mounted after first render to ensure client-only rendering for dynamic parts
+  return (
+    <Link
+      href={item.href}
+      className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors group ${
+        isActive
+          ? 'bg-coinest-accent-cyan text-white'
+          : 'text-coinest-text-muted hover:bg-coinest-bg-tertiary'
+      }`}
+    >
+      <item.icon className="h-5 w-5 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div className="truncate">{item.name}</div>
+        <div
+          className={`text-xs truncate ${
+            isActive ? 'text-white/70' : 'text-coinest-text-muted'
+          }`}
+        >
+          {item.description}
+        </div>
+      </div>
+      <ChevronRight
+        className={`h-4 w-4 shrink-0 transition-transform ${
+          isActive ? 'rotate-90' : 'opacity-0 group-hover:opacity-100'
+        }`}
+      />
+    </Link>
+  )
+}
+
+export function Sidebar() {
+  const [mounted, setMounted] = useState(false)
+  const [isDark, setIsDark] = useState(true)
+  const pathname = usePathname() || '/compliance'
+
   useEffect(() => {
     setMounted(true)
+    // Check localStorage for theme
+    const saved = localStorage.getItem('nexus_compliance_theme')
+    if (saved === 'light') {
+      setIsDark(false)
+    }
   }, [])
 
-  // Helper function to determine if a nav item is active
-  const getIsActive = (itemHref: string): boolean => {
-    if (!mounted) return itemHref === '/compliance' // Default during SSR
-    if (itemHref === '/compliance') {
-      return pathname === '/compliance'
+  const toggleTheme = () => {
+    const newTheme = !isDark
+    setIsDark(newTheme)
+    localStorage.setItem('nexus_compliance_theme', newTheme ? 'dark' : 'light')
+    if (newTheme) {
+      document.documentElement.classList.add('dark')
+      document.documentElement.classList.remove('light')
+    } else {
+      document.documentElement.classList.add('light')
+      document.documentElement.classList.remove('dark')
     }
-    return pathname === itemHref || pathname.startsWith(itemHref + '/')
   }
 
   return (
@@ -140,45 +175,14 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto min-h-0">
-        {navigation.map((item, index) => {
-          const isActive = getIsActive(item.href)
-
-          return (
-            <div key={item.name}>
-              {item.divider && index > 0 && (
-                <div className="my-3 border-t border-coinest-border" />
-              )}
-              <Link
-                href={item.href}
-                className={cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors group',
-                  isActive
-                    ? 'bg-coinest-accent-cyan text-white'
-                    : 'text-coinest-text-muted hover:bg-coinest-bg-tertiary'
-                )}
-              >
-                <item.icon className="h-5 w-5 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="truncate">{item.name}</div>
-                  <div
-                    className={cn(
-                      'text-xs truncate',
-                      isActive ? 'text-white/70' : 'text-coinest-text-muted'
-                    )}
-                  >
-                    {item.description}
-                  </div>
-                </div>
-                <ChevronRight
-                  className={cn(
-                    'h-4 w-4 shrink-0 transition-transform',
-                    isActive ? 'rotate-90' : 'opacity-0 group-hover:opacity-100'
-                  )}
-                />
-              </Link>
-            </div>
-          )
-        })}
+        {navigation.map((item, index) => (
+          <div key={item.name}>
+            {item.divider && index > 0 && (
+              <div className="my-3 border-t border-coinest-border" />
+            )}
+            <NavLink item={item} pathname={pathname} />
+          </div>
+        ))}
       </nav>
 
       {/* Footer with Theme Toggle and Info */}
@@ -191,7 +195,7 @@ export function Sidebar() {
           <span className="text-sm font-medium">
             {mounted ? (isDark ? 'Dark Mode' : 'Light Mode') : 'Dark Mode'}
           </span>
-          {mounted && isDark ? (
+          {isDark ? (
             <Moon className="h-4 w-4" />
           ) : (
             <Sun className="h-4 w-4" />
