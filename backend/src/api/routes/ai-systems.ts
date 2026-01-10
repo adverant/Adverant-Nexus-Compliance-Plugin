@@ -8,22 +8,18 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { query, transaction, type DatabaseRow } from '../../database/client.js';
 import { createLogger } from '../../utils/logger.js';
-import type { AISystem, AIRiskClassification, ComplianceServiceContext } from '../../types/index.js';
+import {
+  getContext,
+  handleRouteError,
+  sendSuccess,
+  sendCreated,
+  sendNotFound,
+  sendConflict,
+  sendError,
+} from '../middleware/index.js';
+import type { AISystem, AIRiskClassification } from '../../types/index.js';
 
 const logger = createLogger('ai-systems-routes');
-
-function getContext(request: FastifyRequest): ComplianceServiceContext {
-  const tenantId = (request.headers['x-tenant-id'] as string) ||
-    (request.headers['x-user-id'] as string) ||
-    'default';
-  const userId = (request.headers['x-user-id'] as string) || 'system';
-  const requestId = (request.headers['x-request-id'] as string) || request.id;
-  const sessionId = request.headers['x-session-id'] as string | undefined;
-  const ipAddress = request.ip;
-  const userAgent = request.headers['user-agent'];
-
-  return { tenantId, userId, requestId, sessionId, ipAddress, userAgent };
-}
 
 const registerAISystemSchema = z.object({
   systemId: z.string().min(1).max(255),
@@ -276,13 +272,13 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
       offset?: string;
     };
   }>('/ai-systems', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
       const params = listQuerySchema.parse(request.query);
 
       let whereClause = 'WHERE tenant_id = $1';
-      const queryParams: unknown[] = [context.tenantId];
+      const queryParams: unknown[] = [ctx.tenantId];
       let paramIndex = 2;
 
       if (params.status) {
@@ -327,7 +323,7 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
          FROM ai_system_registry
          WHERE tenant_id = $1
          GROUP BY risk_classification`,
-        [context.tenantId]
+        [ctx.tenantId]
       );
 
       const byClassification: Record<string, number> = {};
@@ -335,9 +331,9 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
         byClassification[row.classification] = parseInt(row.count, 10);
       }
 
-      return reply.status(200).send({
-        success: true,
-        data: systems,
+      // Custom response format with summary - using sendSuccess pattern
+      sendSuccess(reply, {
+        systems,
         summary: {
           total,
           byClassification,
@@ -350,19 +346,7 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
         },
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors,
-        });
-      }
-
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to list AI systems');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to retrieve AI systems',
-      });
+      handleRouteError(error, reply, { operation: 'list AI systems', tenantId: ctx.tenantId });
     }
   });
 
@@ -371,7 +355,7 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
    * Register a new AI system
    */
   fastify.post('/ai-systems', async (request: FastifyRequest, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
       const body = registerAISystemSchema.parse(request.body);
@@ -379,14 +363,12 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
       // Check if system ID already exists for this tenant
       const existingResult = await query<{ id: string }>(
         `SELECT id FROM ai_system_registry WHERE tenant_id = $1 AND system_id = $2`,
-        [context.tenantId, body.systemId]
+        [ctx.tenantId, body.systemId]
       );
 
       if (existingResult.rows.length > 0) {
-        return reply.status(409).send({
-          success: false,
-          error: `AI system with ID ${body.systemId} already exists`,
-        });
+        sendConflict(reply, `AI system with ID ${body.systemId} already exists`);
+        return;
       }
 
       const id = uuidv4();
@@ -404,7 +386,7 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
         RETURNING *`,
         [
           id,
-          context.tenantId,
+          ctx.tenantId,
           body.systemId,
           body.name,
           body.description,
@@ -429,29 +411,13 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
       const system = mapRowToAISystem(result.rows[0]!);
 
       logger.info(
-        { tenantId: context.tenantId, userId: context.userId, systemId: body.systemId },
+        { tenantId: ctx.tenantId, userId: ctx.userId, systemId: body.systemId },
         'AI system registered'
       );
 
-      return reply.status(201).send({
-        success: true,
-        data: system,
-        message: 'AI system registered successfully. Please classify the risk level.',
-      });
+      sendCreated(reply, system);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors,
-        });
-      }
-
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to register AI system');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to register AI system',
-      });
+      handleRouteError(error, reply, { operation: 'register AI system', tenantId: ctx.tenantId });
     }
   });
 
@@ -462,34 +428,25 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{
     Params: { systemId: string };
   }>('/ai-systems/:systemId', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { systemId } = request.params;
 
     try {
       const result = await query<DatabaseRow>(
         `SELECT * FROM ai_system_registry WHERE tenant_id = $1 AND (id = $2::uuid OR system_id = $3)`,
-        [context.tenantId, systemId, systemId]
+        [ctx.tenantId, systemId, systemId]
       );
 
       if (result.rows.length === 0) {
-        return reply.status(404).send({
-          success: false,
-          error: `AI system not found: ${systemId}`,
-        });
+        sendNotFound(reply, 'AI system', systemId);
+        return;
       }
 
       const system = mapRowToAISystem(result.rows[0]!);
 
-      return reply.status(200).send({
-        success: true,
-        data: system,
-      });
+      sendSuccess(reply, system);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, systemId }, 'Failed to get AI system');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to retrieve AI system',
-      });
+      handleRouteError(error, reply, { operation: 'get AI system', tenantId: ctx.tenantId });
     }
   });
 
@@ -500,7 +457,7 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.put<{
     Params: { systemId: string };
   }>('/ai-systems/:systemId', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { systemId } = request.params;
 
     try {
@@ -509,14 +466,12 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
       // Check if system exists - cast systemId to UUID for id comparison, use text comparison for system_id
       const existingResult = await query<DatabaseRow>(
         `SELECT * FROM ai_system_registry WHERE tenant_id = $1 AND (id = $2::uuid OR system_id = $3)`,
-        [context.tenantId, systemId, systemId]
+        [ctx.tenantId, systemId, systemId]
       );
 
       if (existingResult.rows.length === 0) {
-        return reply.status(404).send({
-          success: false,
-          error: `AI system not found: ${systemId}`,
-        });
+        sendNotFound(reply, 'AI system', systemId);
+        return;
       }
 
       const existing = mapRowToAISystem(existingResult.rows[0]!);
@@ -588,10 +543,8 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       if (updates.length === 0) {
-        return reply.status(400).send({
-          success: false,
-          error: 'No valid fields to update',
-        });
+        sendError(reply, 'No valid fields to update', 400);
+        return;
       }
 
       updates.push(`updated_at = NOW()`);
@@ -608,28 +561,13 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
       const system = mapRowToAISystem(result.rows[0]!);
 
       logger.info(
-        { tenantId: context.tenantId, userId: context.userId, systemId },
+        { tenantId: ctx.tenantId, userId: ctx.userId, systemId },
         'AI system updated'
       );
 
-      return reply.status(200).send({
-        success: true,
-        data: system,
-      });
+      sendSuccess(reply, system);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors,
-        });
-      }
-
-      logger.error({ err: error, tenantId: context.tenantId, systemId }, 'Failed to update AI system');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to update AI system',
-      });
+      handleRouteError(error, reply, { operation: 'update AI system', tenantId: ctx.tenantId });
     }
   });
 
@@ -640,7 +578,7 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{
     Params: { systemId: string };
   }>('/ai-systems/:systemId/classify', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { systemId } = request.params;
 
     try {
@@ -649,14 +587,12 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
       // Get the system - cast systemId to UUID for id comparison, use text comparison for system_id
       const existingResult = await query<DatabaseRow>(
         `SELECT * FROM ai_system_registry WHERE tenant_id = $1 AND (id = $2::uuid OR system_id = $3)`,
-        [context.tenantId, systemId, systemId]
+        [ctx.tenantId, systemId, systemId]
       );
 
       if (existingResult.rows.length === 0) {
-        return reply.status(404).send({
-          success: false,
-          error: `AI system not found: ${systemId}`,
-        });
+        sendNotFound(reply, 'AI system', systemId);
+        return;
       }
 
       const existing = mapRowToAISystem(existingResult.rows[0]!);
@@ -684,7 +620,7 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
         [
           classificationResult.classification,
           classificationResult.rationale,
-          context.userId,
+          ctx.userId,
           existing.id,
         ]
       );
@@ -693,17 +629,17 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
 
       logger.info(
         {
-          tenantId: context.tenantId,
-          userId: context.userId,
+          tenantId: ctx.tenantId,
+          userId: ctx.userId,
           systemId,
           classification: classificationResult.classification,
         },
         'AI system classified'
       );
 
-      return reply.status(200).send({
-        success: true,
-        data: system,
+      // Custom response with classification details
+      sendSuccess(reply, {
+        system,
         classification: {
           result: classificationResult.classification,
           rationale: classificationResult.rationale,
@@ -712,19 +648,7 @@ export async function aiSystemsRoutes(fastify: FastifyInstance): Promise<void> {
         },
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors,
-        });
-      }
-
-      logger.error({ err: error, tenantId: context.tenantId, systemId }, 'Failed to classify AI system');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to classify AI system',
-      });
+      handleRouteError(error, reply, { operation: 'classify AI system', tenantId: ctx.tenantId });
     }
   });
 }

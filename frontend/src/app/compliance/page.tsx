@@ -7,7 +7,6 @@
 
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
 import {
   ShieldCheck,
   CheckCircle2,
@@ -19,7 +18,6 @@ import {
   FileText,
   RefreshCw,
   ChevronRight,
-  Loader2,
 } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -41,12 +39,12 @@ import {
 import { PageHeader } from '@/components/compliance'
 import { StatCard, StatGrid } from '@/components/coinest'
 import { ChartCard } from '@/components/coinest'
-import { DataTable } from '@/components/coinest'
-import { useTheme } from '@/stores/theme-store'
-import { useThemeClasses } from '@/hooks/useThemeClasses'
+import { useThemeClasses, useThemeColors } from '@/hooks/useThemeClasses'
+import { useApiQuery, useApiMutation } from '@/hooks/useApiQuery'
+import { ErrorState, LoadingState } from '@/components/error-state'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
-import { complianceApi, DashboardData, ComplianceAlert } from '@/lib/compliance-api'
+import { complianceApi, type DashboardData } from '@/lib/compliance-api'
 
 // Default/fallback data for the dashboard
 const defaultDashboardData: DashboardData = {
@@ -84,74 +82,64 @@ const defaultDashboardData: DashboardData = {
   ],
 }
 
-const RISK_COLORS = {
-  critical: '#ef4444',
-  high: '#f97316',
-  medium: '#eab308',
-  low: '#22c55e',
-}
-
-const FRAMEWORK_COLORS = [
-  '#4faeca',
-  '#3b82f6',
-  '#8b5cf6',
-  '#ec4899',
-  '#14b8a6',
-  '#f59e0b',
-]
-
 export default function ComplianceDashboardPage() {
-  const { isDark } = useTheme()
   const tc = useThemeClasses()
-  const [isLoading, setIsLoading] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const [dashboardData, setDashboardData] = useState<DashboardData>(defaultDashboardData)
-  const [error, setError] = useState<string | null>(null)
+  const themeColors = useThemeColors()
 
-  const fetchDashboard = useCallback(async () => {
-    try {
-      const response = await complianceApi.getDashboard()
-      if (response.success && response.data) {
-        setDashboardData(response.data)
-        setError(null)
-      }
-    } catch (err) {
-      console.error('Failed to fetch dashboard:', err)
-      setError('Failed to load dashboard data')
-    } finally {
-      setIsLoading(false)
-      setIsRefreshing(false)
+  // Fetch dashboard data using standardized hook
+  const {
+    data: dashboardData,
+    isLoading,
+    isRefetching,
+    error,
+    refetch,
+  } = useApiQuery(
+    () => complianceApi.getDashboard(),
+    {
+      onError: (msg) => console.error('Failed to fetch dashboard:', msg),
     }
-  }, [])
+  )
 
-  useEffect(() => {
-    fetchDashboard()
-  }, [fetchDashboard])
+  // Mutation for acknowledging alerts
+  const { mutate: acknowledgeAlert } = useApiMutation(
+    (alertId: string) => complianceApi.acknowledgeAlert(alertId),
+    {
+      onSuccess: () => refetch(),
+      onError: (msg) => console.error('Failed to acknowledge alert:', msg),
+    }
+  )
 
   const handleRefresh = () => {
-    setIsRefreshing(true)
-    fetchDashboard()
+    refetch()
   }
 
-  const handleAcknowledgeAlert = async (alertId: string) => {
-    try {
-      await complianceApi.acknowledgeAlert(alertId)
-      // Refresh dashboard to get updated alerts
-      fetchDashboard()
-    } catch (err) {
-      console.error('Failed to acknowledge alert:', err)
-    }
+  const handleAcknowledgeAlert = (alertId: string) => {
+    acknowledgeAlert(alertId)
   }
 
-  const { kpis, frameworkScores, requirementScores, recentAlerts, riskDistribution } = dashboardData
+  // Use fetched data or fallback to defaults
+  const data = dashboardData || defaultDashboardData
+  const { kpis, frameworkScores, requirementScores, recentAlerts, riskDistribution } = data
 
+  // Loading state
   if (isLoading) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className={cn('h-8 w-8 animate-spin', tc.accentCyan)} />
-          <p className={tc.textMuted}>Loading compliance dashboard...</p>
-        </div>
+      <div className="p-6">
+        <LoadingState message="Loading compliance dashboard..." className="min-h-[400px]" />
+      </div>
+    )
+  }
+
+  // Error state
+  if (error && !dashboardData) {
+    return (
+      <div className="p-6">
+        <ErrorState
+          message={error}
+          title="Failed to load dashboard"
+          onRetry={refetch}
+          isRetrying={isRefetching}
+        />
       </div>
     )
   }
@@ -172,11 +160,11 @@ export default function ComplianceDashboardPage() {
                 tc.buttonSecondary
               )}
             >
-              <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
+              <RefreshCw className={cn('h-4 w-4', isRefetching && 'animate-spin')} />
               Refresh
             </button>
             <Link
-              href="/compliance/assessment"
+              href="/compliance/assessments/new"
               className={cn(
                 'flex items-center gap-2 px-4 py-2 rounded-lg transition-colors',
                 tc.buttonPrimary
@@ -232,31 +220,31 @@ export default function ComplianceDashboardPage() {
           subtitle="7 EU Requirements Compliance Score"
         >
           <ResponsiveContainer width="100%" height={350}>
-            <RadarChart data={requirementScores.map(r => ({ ...r, fullMark: 100 }))}>
-              <PolarGrid stroke={isDark ? '#333333' : '#e5e7eb'} />
+            <RadarChart data={requirementScores.map((r: { label: string; score: number }) => ({ ...r, fullMark: 100 }))}>
+              <PolarGrid stroke={themeColors.grid.line} />
               <PolarAngleAxis
                 dataKey="label"
-                tick={{ fill: isDark ? '#a3a3a3' : '#6b7280', fontSize: 12 }}
+                tick={{ fill: themeColors.grid.text, fontSize: 12 }}
               />
               <PolarRadiusAxis
                 angle={30}
                 domain={[0, 100]}
-                tick={{ fill: isDark ? '#737373' : '#9ca3af', fontSize: 10 }}
+                tick={{ fill: themeColors.grid.text, fontSize: 10 }}
               />
               <Radar
                 name="Current Score"
                 dataKey="score"
-                stroke="#4faeca"
-                fill="#4faeca"
+                stroke={themeColors.accent.cyan}
+                fill={themeColors.accent.cyan}
                 fillOpacity={0.3}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
-                  border: `1px solid ${isDark ? '#333333' : '#e5e7eb'}`,
+                  backgroundColor: themeColors.chartBg.secondary,
+                  border: `1px solid ${themeColors.grid.line}`,
                   borderRadius: '8px',
                 }}
-                labelStyle={{ color: isDark ? '#ffffff' : '#111827' }}
+                labelStyle={{ color: themeColors.isDark ? '#ffffff' : '#111827' }}
                 formatter={(value: number) => [`${value}%`, 'Score']}
               />
             </RadarChart>
@@ -272,32 +260,32 @@ export default function ComplianceDashboardPage() {
             <BarChart data={frameworkScores} layout="vertical">
               <CartesianGrid
                 strokeDasharray="3 3"
-                stroke={isDark ? '#333333' : '#e5e7eb'}
+                stroke={themeColors.grid.line}
               />
               <XAxis
                 type="number"
                 domain={[0, 100]}
-                tick={{ fill: isDark ? '#a3a3a3' : '#6b7280', fontSize: 12 }}
+                tick={{ fill: themeColors.grid.text, fontSize: 12 }}
                 tickFormatter={(v) => `${v}%`}
               />
               <YAxis
                 type="category"
                 dataKey="frameworkName"
-                tick={{ fill: isDark ? '#a3a3a3' : '#6b7280', fontSize: 12 }}
+                tick={{ fill: themeColors.grid.text, fontSize: 12 }}
                 width={80}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
-                  border: `1px solid ${isDark ? '#333333' : '#e5e7eb'}`,
+                  backgroundColor: themeColors.chartBg.secondary,
+                  border: `1px solid ${themeColors.grid.line}`,
                   borderRadius: '8px',
                 }}
-                labelStyle={{ color: isDark ? '#ffffff' : '#111827' }}
+                labelStyle={{ color: themeColors.isDark ? '#ffffff' : '#111827' }}
                 formatter={(value: number) => [`${value}%`, 'Compliance Score']}
               />
               <Bar dataKey="score" radius={[0, 4, 4, 0]}>
-                {frameworkScores.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={FRAMEWORK_COLORS[index % FRAMEWORK_COLORS.length]} />
+                {frameworkScores.map((_entry: unknown, index: number) => (
+                  <Cell key={`cell-${index}`} fill={themeColors.framework[index % themeColors.framework.length]} />
                 ))}
               </Bar>
             </BarChart>
@@ -322,22 +310,23 @@ export default function ComplianceDashboardPage() {
                 outerRadius={80}
                 paddingAngle={2}
                 dataKey="count"
-                label={({ level, percentage }) => `${level} ${percentage}%`}
+                label={({ level, percentage }: { level: string; percentage: number }) => `${level} ${percentage}%`}
                 labelLine={false}
               >
-                {riskDistribution.map((entry, index) => (
+                {riskDistribution.map((entry, index: number) => (
                   <Cell
                     key={`cell-${index}`}
-                    fill={RISK_COLORS[entry.level.toLowerCase() as keyof typeof RISK_COLORS]}
+                    fill={themeColors.risk[entry.level.toLowerCase() as keyof typeof themeColors.risk]}
                   />
                 ))}
               </Pie>
               <Tooltip
                 contentStyle={{
-                  backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
-                  border: `1px solid ${isDark ? '#333333' : '#e5e7eb'}`,
+                  backgroundColor: themeColors.chartBg.secondary,
+                  border: `1px solid ${themeColors.grid.line}`,
                   borderRadius: '8px',
                 }}
+                labelStyle={{ color: themeColors.isDark ? '#ffffff' : '#111827' }}
               />
             </PieChart>
           </ResponsiveContainer>

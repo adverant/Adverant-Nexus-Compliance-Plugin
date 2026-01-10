@@ -6,7 +6,12 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { complianceToggleService } from '../../services/compliance-toggle-service.js';
 import { createLogger } from '../../utils/logger.js';
-import type { ComplianceServiceContext, ModuleConfigMap } from '../../types/index.js';
+import {
+  getContext,
+  handleRouteError,
+  sendSuccess,
+} from '../middleware/index.js';
+import type { ModuleConfigMap } from '../../types/index.js';
 
 const logger = createLogger('config-routes');
 
@@ -30,40 +35,19 @@ const auditQuerySchema = z.object({
   module: z.string().optional(),
 });
 
-function getContext(request: FastifyRequest): ComplianceServiceContext {
-  const tenantId = (request.headers['x-tenant-id'] as string) ||
-    (request.headers['x-user-id'] as string) ||
-    'default';
-  const userId = (request.headers['x-user-id'] as string) || 'system';
-  const requestId = (request.headers['x-request-id'] as string) || request.id;
-  const sessionId = request.headers['x-session-id'] as string | undefined;
-  const ipAddress = request.ip;
-  const userAgent = request.headers['user-agent'];
-
-  return { tenantId, userId, requestId, sessionId, ipAddress, userAgent };
-}
-
 export async function configRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * GET /api/v1/compliance/config
    * Get compliance configuration for the current tenant
    */
   fastify.get('/config', async (request: FastifyRequest, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
-      const config = await complianceToggleService.getConfig(context.tenantId);
-
-      return reply.status(200).send({
-        success: true,
-        data: config,
-      });
+      const config = await complianceToggleService.getConfig(ctx.tenantId);
+      sendSuccess(reply, config);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to get config');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to retrieve compliance configuration',
-      });
+      handleRouteError(error, reply, { operation: 'get config', tenantId: ctx.tenantId });
     }
   });
 
@@ -74,37 +58,20 @@ export async function configRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.put(
     '/config/master',
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const context = getContext(request);
+      const ctx = getContext(request);
 
       try {
         const body = toggleMasterSchema.parse(request.body);
-
-        const config = await complianceToggleService.toggleMaster(context, body);
+        const config = await complianceToggleService.toggleMaster(ctx, body);
 
         logger.info(
-          { tenantId: context.tenantId, userId: context.userId, enabled: body.enabled },
+          { tenantId: ctx.tenantId, userId: ctx.userId, enabled: body.enabled },
           'Master compliance toggle updated'
         );
 
-        return reply.status(200).send({
-          success: true,
-          data: config,
-          message: `Master compliance ${body.enabled ? 'enabled' : 'disabled'}`,
-        });
+        sendSuccess(reply, config);
       } catch (error) {
-        if (error instanceof z.ZodError) {
-          return reply.status(400).send({
-            success: false,
-            error: 'Validation failed',
-            details: error.errors,
-          });
-        }
-
-        logger.error({ err: error, tenantId: context.tenantId }, 'Failed to toggle master');
-        return reply.status(500).send({
-          success: false,
-          error: 'Failed to update master compliance toggle',
-        });
+        handleRouteError(error, reply, { operation: 'toggle master', tenantId: ctx.tenantId });
       }
     }
   );
@@ -114,26 +81,22 @@ export async function configRoutes(fastify: FastifyInstance): Promise<void> {
    * Toggle a specific compliance module or feature
    */
   fastify.put('/config', async (request: FastifyRequest, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
       const body = toggleModuleSchema.parse(request.body);
 
-      const config = await complianceToggleService.toggleModule(context, {
+      const config = await complianceToggleService.toggleModule(ctx, {
         module: body.module as keyof ModuleConfigMap,
         enabled: body.enabled,
         reason: body.reason,
         feature: body.feature,
       });
 
-      const target = body.feature
-        ? `${body.module}.${body.feature}`
-        : body.module;
-
       logger.info(
         {
-          tenantId: context.tenantId,
-          userId: context.userId,
+          tenantId: ctx.tenantId,
+          userId: ctx.userId,
           module: body.module,
           feature: body.feature,
           enabled: body.enabled,
@@ -141,25 +104,9 @@ export async function configRoutes(fastify: FastifyInstance): Promise<void> {
         'Module toggle updated'
       );
 
-      return reply.status(200).send({
-        success: true,
-        data: config,
-        message: `Compliance module ${target} ${body.enabled ? 'enabled' : 'disabled'}`,
-      });
+      sendSuccess(reply, config);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors,
-        });
-      }
-
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to toggle module');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to update compliance module toggle',
-      });
+      handleRouteError(error, reply, { operation: 'toggle module', tenantId: ctx.tenantId });
     }
   });
 
@@ -173,7 +120,7 @@ export async function configRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/config/enabled/:module',
     async (request, reply: FastifyReply) => {
-      const context = getContext(request);
+      const ctx = getContext(request);
       const { module } = request.params;
       const { feature } = request.query;
 
@@ -187,25 +134,14 @@ export async function configRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         const enabled = await complianceToggleService.isEnabled(
-          context.tenantId,
+          ctx.tenantId,
           module as keyof ModuleConfigMap,
           feature
         );
 
-        return reply.status(200).send({
-          success: true,
-          data: {
-            module,
-            feature: feature ?? null,
-            enabled,
-          },
-        });
+        sendSuccess(reply, { module, feature: feature ?? null, enabled });
       } catch (error) {
-        logger.error({ err: error, tenantId: context.tenantId, module }, 'Failed to check enabled status');
-        return reply.status(500).send({
-          success: false,
-          error: 'Failed to check module enabled status',
-        });
+        handleRouteError(error, reply, { operation: 'check enabled status', tenantId: ctx.tenantId, module });
       }
     }
   );
@@ -222,17 +158,17 @@ export async function configRoutes(fastify: FastifyInstance): Promise<void> {
       module?: string;
     };
   }>('/config/audit', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
       const params = auditQuerySchema.parse(request.query);
 
       const { audits, total } = await complianceToggleService.getAuditLog(
-        context.tenantId,
+        ctx.tenantId,
         params
       );
 
-      return reply.status(200).send({
+      reply.status(200).send({
         success: true,
         data: audits,
         pagination: {
@@ -243,19 +179,7 @@ export async function configRoutes(fastify: FastifyInstance): Promise<void> {
         },
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors,
-        });
-      }
-
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to get audit log');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to retrieve audit log',
-      });
+      handleRouteError(error, reply, { operation: 'get audit log', tenantId: ctx.tenantId });
     }
   });
 }

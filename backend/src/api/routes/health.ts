@@ -5,6 +5,7 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { healthCheck as dbHealthCheck } from '../../database/client.js';
 import { config } from '../../config/index.js';
+import { sendSuccess, sendError } from '../middleware/index.js';
 
 interface HealthStatus {
   status: 'healthy' | 'unhealthy' | 'degraded';

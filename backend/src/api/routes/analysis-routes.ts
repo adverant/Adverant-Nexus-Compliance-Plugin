@@ -1,86 +1,113 @@
 /**
- * Cross-Analysis API Routes
+ * Cross-Analysis API Routes (Fastify)
  *
  * Endpoints for cross-framework analysis, gap analysis,
  * requirement coverage, and Z-Inspection control mapping.
  */
 
-import { Router, Request, Response, NextFunction } from 'express';
-import { Pool } from 'pg';
+import { FastifyInstance, FastifyReply } from 'fastify';
+import { getPool } from '../../database/client.js';
+import { CrossAnalysisService, RelationshipType } from '../../services/cross-analysis-service.js';
+import { TrustworthyAIRequirementId } from '../../types/qualitative.js';
+import {
+  getContext,
+  handleRouteError,
+  sendSuccess,
+  sendCreated,
+  sendNotFound,
+  sendError,
+} from '../middleware/index.js';
 
-import { CrossAnalysisService } from '../../services/cross-analysis-service';
+// Valid query types for saved analysis queries
+type AnalysisQueryType = 'cross_framework' | 'gap_analysis' | 'requirement_coverage' | 'z_inspection';
+const VALID_QUERY_TYPES: AnalysisQueryType[] = ['cross_framework', 'gap_analysis', 'requirement_coverage', 'z_inspection'];
+
+function isValidQueryType(value: string): value is AnalysisQueryType {
+  return VALID_QUERY_TYPES.includes(value as AnalysisQueryType);
+}
+
+// Lazy singleton service
+let _crossAnalysisService: CrossAnalysisService | null = null;
+function getService(): CrossAnalysisService {
+  if (!_crossAnalysisService) {
+    _crossAnalysisService = new CrossAnalysisService(getPool());
+  }
+  return _crossAnalysisService;
+}
 
 // ============================================================================
-// Route Factory
+// Route Registration
 // ============================================================================
 
-export function createAnalysisRoutes(pool: Pool): Router {
-  const router = Router();
-  const crossAnalysisService = new CrossAnalysisService(pool);
-
+export async function analysisRoutes(fastify: FastifyInstance): Promise<void> {
   // ==========================================================================
   // Cross-Framework Analysis
   // ==========================================================================
 
   /**
    * Get cross-framework control mapping matrix
-   * GET /api/v1/compliance/analysis/cross-framework
+   * GET /cross-framework
    */
-  router.get('/cross-framework', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get('/cross-framework', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+
     try {
-      const { tenantId } = req.query;
-      const matrix = await crossAnalysisService.getControlMappingMatrix(tenantId as string);
-      res.json(matrix);
+      const matrix = await getService().getControlMappingMatrix(ctx.tenantId);
+      sendSuccess(reply, matrix);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'getControlMappingMatrix', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Get framework overlap statistics
-   * GET /api/v1/compliance/analysis/cross-framework/overlap
+   * GET /cross-framework/overlap
    */
-  router.get('/cross-framework/overlap', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: { framework1?: string; framework2?: string };
+  }>('/cross-framework/overlap', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { framework1, framework2 } = request.query;
+
+    if (!framework1 || !framework2) {
+      return sendError(reply, 'framework1 and framework2 query parameters are required');
+    }
+
     try {
-      const { framework1, framework2 } = req.query;
-
-      if (!framework1 || !framework2) {
-        res.status(400).json({ error: 'framework1 and framework2 query parameters are required' });
-        return;
-      }
-
-      const overlap = await crossAnalysisService.getFrameworkOverlap(
-        framework1 as string,
-        framework2 as string
-      );
+      const overlap = await getService().getFrameworkOverlap(framework1, framework2);
 
       if (!overlap) {
-        res.status(404).json({ error: 'No overlap data found' });
-        return;
+        return sendNotFound(reply, 'Overlap data');
       }
 
-      res.json(overlap);
+      sendSuccess(reply, overlap);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'getFrameworkOverlap', tenantId: ctx.tenantId, framework1, framework2 });
     }
   });
 
   /**
    * Create control cross-reference
-   * POST /api/v1/compliance/analysis/cross-framework/mappings
+   * POST /cross-framework/mappings
    */
-  router.post('/cross-framework/mappings', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: {
+      sourceControlId?: string;
+      targetControlId?: string;
+      relationshipType?: RelationshipType;
+      confidence?: number;
+      rationale?: string;
+    };
+  }>('/cross-framework/mappings', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { sourceControlId, targetControlId, relationshipType, confidence, rationale } = request.body || {};
+
+    if (!sourceControlId || !targetControlId || !relationshipType) {
+      return sendError(reply, 'sourceControlId, targetControlId, and relationshipType are required');
+    }
+
     try {
-      const { sourceControlId, targetControlId, relationshipType, confidence, rationale } = req.body;
-
-      if (!sourceControlId || !targetControlId || !relationshipType) {
-        res.status(400).json({
-          error: 'sourceControlId, targetControlId, and relationshipType are required'
-        });
-        return;
-      }
-
-      const mapping = await crossAnalysisService.createCrossReference(
+      const mapping = await getService().createCrossReference(
         sourceControlId,
         targetControlId,
         relationshipType,
@@ -89,22 +116,27 @@ export function createAnalysisRoutes(pool: Pool): Router {
         rationale
       );
 
-      res.status(201).json(mapping);
+      sendCreated(reply, mapping);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'createCrossReference', tenantId: ctx.tenantId, sourceControlId, targetControlId });
     }
   });
 
   /**
    * Find equivalent controls for a given control
-   * GET /api/v1/compliance/analysis/cross-framework/equivalents/:controlId
+   * GET /cross-framework/equivalents/:controlId
    */
-  router.get('/cross-framework/equivalents/:controlId', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Params: { controlId: string };
+  }>('/cross-framework/equivalents/:controlId', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { controlId } = request.params;
+
     try {
-      const equivalents = await crossAnalysisService.findEquivalentControls(req.params.controlId);
-      res.json(equivalents);
+      const equivalents = await getService().findEquivalentControls(controlId);
+      sendSuccess(reply, equivalents);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'findEquivalentControls', tenantId: ctx.tenantId, controlId });
     }
   });
 
@@ -114,29 +146,36 @@ export function createAnalysisRoutes(pool: Pool): Router {
 
   /**
    * Get 7 EU requirements coverage across all frameworks
-   * GET /api/v1/compliance/analysis/requirement-coverage
+   * GET /requirement-coverage
    */
-  router.get('/requirement-coverage', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get('/requirement-coverage', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+
     try {
-      const coverage = await crossAnalysisService.getRequirementCoverage();
-      res.json(coverage);
+      const coverage = await getService().getRequirementCoverage();
+      sendSuccess(reply, coverage);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'getRequirementCoverage', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Get controls for a specific requirement grouped by framework
-   * GET /api/v1/compliance/analysis/requirements/:requirementId/controls
+   * GET /requirements/:requirementId/controls
    */
-  router.get('/requirements/:requirementId/controls', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Params: { requirementId: string };
+  }>('/requirements/:requirementId/controls', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { requirementId } = request.params;
+
     try {
-      const controls = await crossAnalysisService.getControlsForRequirement(
-        req.params.requirementId as any
+      const controls = await getService().getControlsForRequirement(
+        requirementId as TrustworthyAIRequirementId
       );
-      res.json(controls);
+      sendSuccess(reply, controls);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'getControlsForRequirement', tenantId: ctx.tenantId, requirementId });
     }
   });
 
@@ -146,61 +185,46 @@ export function createAnalysisRoutes(pool: Pool): Router {
 
   /**
    * Run gap analysis for a tenant
-   * GET /api/v1/compliance/analysis/gap-analysis
+   * GET /gap-analysis
    */
-  router.get('/gap-analysis', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get('/gap-analysis', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+
     try {
-      const { tenantId } = req.query;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
-      }
-
-      const analysis = await crossAnalysisService.identifyGaps(tenantId as string);
-      res.json(analysis);
+      const analysis = await getService().identifyGaps(ctx.tenantId);
+      sendSuccess(reply, analysis);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'identifyGaps', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Get unmapped controls
-   * GET /api/v1/compliance/analysis/unmapped-controls
+   * GET /unmapped-controls
    */
-  router.get('/unmapped-controls', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get('/unmapped-controls', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+
     try {
-      const { tenantId } = req.query;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
-      }
-
-      const unmapped = await crossAnalysisService.findUnmappedControls(tenantId as string);
-      res.json(unmapped);
+      const unmapped = await getService().findUnmappedControls(ctx.tenantId);
+      sendSuccess(reply, unmapped);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'findUnmappedControls', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Get unmapped requirements
-   * GET /api/v1/compliance/analysis/unmapped-requirements
+   * GET /unmapped-requirements
    */
-  router.get('/unmapped-requirements', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get('/unmapped-requirements', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+
     try {
-      const { tenantId } = req.query;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
-      }
-
-      const unmapped = await crossAnalysisService.findUnmappedRequirements(tenantId as string);
-      res.json(unmapped);
+      const unmapped = await getService().findUnmappedRequirements(ctx.tenantId);
+      sendSuccess(reply, unmapped);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'findUnmappedRequirements', tenantId: ctx.tenantId });
     }
   });
 
@@ -210,41 +234,45 @@ export function createAnalysisRoutes(pool: Pool): Router {
 
   /**
    * Map Z-Inspection findings to controls
-   * POST /api/v1/compliance/analysis/z-inspection/map-finding
+   * POST /z-inspection/map-finding
    */
-  router.post('/z-inspection/map-finding', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: { findingId?: string };
+  }>('/z-inspection/map-finding', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { findingId } = request.body || {};
+
+    if (!findingId) {
+      return sendError(reply, 'findingId is required');
+    }
+
     try {
-      const { findingId } = req.body;
-
-      if (!findingId) {
-        res.status(400).json({ error: 'findingId is required' });
-        return;
-      }
-
-      const links = await crossAnalysisService.mapZInspectionToControls(findingId);
-      res.json({ links, count: links.length });
+      const links = await getService().mapZInspectionToControls(findingId);
+      sendSuccess(reply, { links, count: links.length });
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'mapZInspectionToControls', tenantId: ctx.tenantId, findingId });
     }
   });
 
   /**
    * Adjust control weights based on Z-Inspection report
-   * POST /api/v1/compliance/analysis/z-inspection/adjust-weights
+   * POST /z-inspection/adjust-weights
    */
-  router.post('/z-inspection/adjust-weights', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: { reportId?: string };
+  }>('/z-inspection/adjust-weights', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { reportId } = request.body || {};
+
+    if (!reportId) {
+      return sendError(reply, 'reportId is required');
+    }
+
     try {
-      const { reportId } = req.body;
-
-      if (!reportId) {
-        res.status(400).json({ error: 'reportId is required' });
-        return;
-      }
-
-      const adjustments = await crossAnalysisService.adjustControlWeights(reportId);
-      res.json({ adjustments, count: adjustments.length });
+      const adjustments = await getService().adjustControlWeights(reportId);
+      sendSuccess(reply, { adjustments, count: adjustments.length });
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'adjustControlWeights', tenantId: ctx.tenantId, reportId });
     }
   });
 
@@ -254,41 +282,57 @@ export function createAnalysisRoutes(pool: Pool): Router {
 
   /**
    * Save an analysis query
-   * POST /api/v1/compliance/analysis/queries
+   * POST /queries
    */
-  router.post('/queries', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: {
+      name?: string;
+      queryType?: string;
+      parameters?: Record<string, unknown>;
+      scheduleFrequency?: string;
+    };
+  }>('/queries', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { name, queryType, parameters, scheduleFrequency } = request.body || {};
+
+    if (!name || !queryType) {
+      return sendError(reply, 'name and queryType are required');
+    }
+
+    if (!isValidQueryType(queryType)) {
+      return sendError(reply, `Invalid queryType. Must be one of: ${VALID_QUERY_TYPES.join(', ')}`);
+    }
+
     try {
-      const { tenantId, name, queryType, parameters, scheduleFrequency } = req.body;
-
-      if (!tenantId || !name || !queryType) {
-        res.status(400).json({ error: 'tenantId, name, and queryType are required' });
-        return;
-      }
-
-      const query = await crossAnalysisService.saveAnalysisQuery(
-        tenantId,
+      const query = await getService().saveAnalysisQuery(
+        ctx.tenantId,
         name,
         queryType,
         parameters || {},
         scheduleFrequency
       );
 
-      res.status(201).json(query);
+      sendCreated(reply, query);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'saveAnalysisQuery', tenantId: ctx.tenantId, name });
     }
   });
 
   /**
    * Run a saved query
-   * POST /api/v1/compliance/analysis/queries/:id/run
+   * POST /queries/:id/run
    */
-  router.post('/queries/:id/run', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Params: { id: string };
+  }>('/queries/:id/run', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+
     try {
-      const result = await crossAnalysisService.runSavedQuery(req.params.id);
-      res.json(result);
+      const result = await getService().runSavedQuery(id);
+      sendSuccess(reply, result);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'runSavedQuery', tenantId: ctx.tenantId, queryId: id });
     }
   });
 
@@ -298,28 +342,32 @@ export function createAnalysisRoutes(pool: Pool): Router {
 
   /**
    * Perform AI-powered cross-framework analysis
-   * POST /api/v1/compliance/analysis/ai-analyze
+   * POST /ai-analyze
    */
-  router.post('/ai-analyze', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: {
+      query?: string;
+      frameworks?: string[];
+      requirementFocus?: TrustworthyAIRequirementId[];
+    };
+  }>('/ai-analyze', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { query, frameworks, requirementFocus } = request.body || {};
+
+    if (!query) {
+      return sendError(reply, 'query is required');
+    }
+
     try {
-      const { query, tenantId, frameworks, requirementFocus } = req.body;
-
-      if (!query || !tenantId) {
-        res.status(400).json({ error: 'query and tenantId are required' });
-        return;
-      }
-
-      const result = await crossAnalysisService.aiAnalyzeCrossFramework(query, {
-        tenantId,
+      const result = await getService().aiAnalyzeCrossFramework(query, {
+        tenantId: ctx.tenantId,
         frameworks,
         requirementFocus
       });
 
-      res.json(result);
+      sendSuccess(reply, result);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'aiAnalyzeCrossFramework', tenantId: ctx.tenantId });
     }
   });
-
-  return router;
 }

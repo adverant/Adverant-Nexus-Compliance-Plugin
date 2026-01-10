@@ -56,6 +56,16 @@ export const THEME_COLORS = {
     line: { dark: '#334155', light: '#e2e8f0' },
     text: { dark: '#94a3b8', light: '#64748b' },
   },
+  /** EU Trustworthy AI requirement colors */
+  requirement: {
+    human_agency_oversight: { dark: '#3b82f6', light: '#2563eb' },
+    technical_robustness_safety: { dark: '#22c55e', light: '#16a34a' },
+    privacy_data_governance: { dark: '#8b5cf6', light: '#7c3aed' },
+    transparency: { dark: '#f59e0b', light: '#d97706' },
+    diversity_fairness_nondiscrimination: { dark: '#ec4899', light: '#db2777' },
+    societal_environmental_wellbeing: { dark: '#14b8a6', light: '#0d9488' },
+    accountability: { dark: '#6366f1', light: '#4f46e5' },
+  },
 } as const
 
 /**
@@ -224,6 +234,16 @@ export function useThemeColors() {
     grid: {
       line: isDark ? THEME_COLORS.grid.line.dark : THEME_COLORS.grid.line.light,
       text: isDark ? THEME_COLORS.grid.text.dark : THEME_COLORS.grid.text.light,
+    },
+    /** EU Trustworthy AI requirement colors */
+    requirement: {
+      human_agency_oversight: isDark ? THEME_COLORS.requirement.human_agency_oversight.dark : THEME_COLORS.requirement.human_agency_oversight.light,
+      technical_robustness_safety: isDark ? THEME_COLORS.requirement.technical_robustness_safety.dark : THEME_COLORS.requirement.technical_robustness_safety.light,
+      privacy_data_governance: isDark ? THEME_COLORS.requirement.privacy_data_governance.dark : THEME_COLORS.requirement.privacy_data_governance.light,
+      transparency: isDark ? THEME_COLORS.requirement.transparency.dark : THEME_COLORS.requirement.transparency.light,
+      diversity_fairness_nondiscrimination: isDark ? THEME_COLORS.requirement.diversity_fairness_nondiscrimination.dark : THEME_COLORS.requirement.diversity_fairness_nondiscrimination.light,
+      societal_environmental_wellbeing: isDark ? THEME_COLORS.requirement.societal_environmental_wellbeing.dark : THEME_COLORS.requirement.societal_environmental_wellbeing.light,
+      accountability: isDark ? THEME_COLORS.requirement.accountability.dark : THEME_COLORS.requirement.accountability.light,
     },
   }
 }

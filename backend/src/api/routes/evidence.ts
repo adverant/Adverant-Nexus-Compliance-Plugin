@@ -5,25 +5,20 @@
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { createLogger } from '../../utils/logger.js';
 import {
   evidenceService,
   type EvidenceType,
   type EvidenceStatus
 } from '../../services/evidence-service.js';
-import type { ComplianceServiceContext } from '../../types/index.js';
-
-const logger = createLogger('evidence-routes');
-
-function getContext(request: FastifyRequest): ComplianceServiceContext {
-  const tenantId = (request.headers['x-tenant-id'] as string) ||
-    (request.headers['x-user-id'] as string) ||
-    'default';
-  const userId = (request.headers['x-user-id'] as string) || 'system';
-  const requestId = (request.headers['x-request-id'] as string) || request.id;
-
-  return { tenantId, userId, requestId };
-}
+import {
+  getContext,
+  handleRouteError,
+  sendSuccess,
+  sendCreated,
+  sendNotFound,
+  sendPaginated,
+  sendError,
+} from '../middleware/index.js';
 
 const createEvidenceSchema = z.object({
   controlId: z.string().min(1),
@@ -72,36 +67,21 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
    * Create new evidence
    */
   fastify.post('/evidence', async (request: FastifyRequest, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
       const body = createEvidenceSchema.parse(request.body);
 
-      const evidence = await evidenceService.createEvidence(context, {
+      const evidence = await evidenceService.createEvidence(ctx, {
         ...body,
         collectedAt: body.collectedAt ? new Date(body.collectedAt) : undefined,
         validFrom: body.validFrom ? new Date(body.validFrom) : undefined,
         validUntil: body.validUntil ? new Date(body.validUntil) : undefined
       });
 
-      return reply.status(201).send({
-        success: true,
-        data: evidence
-      });
+      return sendCreated(reply, evidence);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors
-        });
-      }
-
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to create evidence');
-      return reply.status(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to create evidence'
-      });
+      return handleRouteError(error, reply, { operation: 'createEvidence', tenantId: ctx.tenantId });
     }
   });
 
@@ -110,34 +90,19 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
    * Create attestation
    */
   fastify.post('/evidence/attestation', async (request: FastifyRequest, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
       const body = createAttestationSchema.parse(request.body);
 
-      const result = await evidenceService.createAttestation(context, {
+      const result = await evidenceService.createAttestation(ctx, {
         ...body,
         validUntil: new Date(body.validUntil)
       });
 
-      return reply.status(201).send({
-        success: true,
-        data: result
-      });
+      return sendCreated(reply, result);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors
-        });
-      }
-
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to create attestation');
-      return reply.status(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to create attestation'
-      });
+      return handleRouteError(error, reply, { operation: 'createAttestation', tenantId: ctx.tenantId });
     }
   });
 
@@ -148,41 +113,24 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{
     Querystring: Record<string, string>;
   }>('/evidence', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
       const params = searchQuerySchema.parse(request.query);
 
-      const result = await evidenceService.searchEvidence(context.tenantId, {
+      const result = await evidenceService.searchEvidence(ctx.tenantId, {
         ...params,
         fromDate: params.fromDate ? new Date(params.fromDate) : undefined,
         toDate: params.toDate ? new Date(params.toDate) : undefined
       });
 
-      return reply.status(200).send({
-        success: true,
-        data: result.data,
-        pagination: {
-          total: result.total,
-          page: result.page,
-          limit: result.limit,
-          totalPages: Math.ceil(result.total / result.limit)
-        }
+      return sendPaginated(reply, result.data, {
+        total: result.total,
+        page: result.page,
+        limit: result.limit
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors
-        });
-      }
-
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to search evidence');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to search evidence'
-      });
+      return handleRouteError(error, reply, { operation: 'searchEvidence', tenantId: ctx.tenantId });
     }
   });
 
@@ -191,21 +139,14 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
    * Get evidence statistics
    */
   fastify.get('/evidence/stats', async (request: FastifyRequest, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
-      const stats = await evidenceService.getEvidenceStats(context.tenantId);
+      const stats = await evidenceService.getEvidenceStats(ctx.tenantId);
 
-      return reply.status(200).send({
-        success: true,
-        data: stats
-      });
+      return sendSuccess(reply, stats);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to get evidence stats');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to get evidence statistics'
-      });
+      return handleRouteError(error, reply, { operation: 'getEvidenceStats', tenantId: ctx.tenantId });
     }
   });
 
@@ -216,23 +157,15 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{
     Querystring: { days?: string };
   }>('/evidence/expiring', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const daysAhead = parseInt(request.query.days || '30', 10);
 
     try {
-      const evidence = await evidenceService.getExpiringEvidence(context.tenantId, daysAhead);
+      const evidence = await evidenceService.getExpiringEvidence(ctx.tenantId, daysAhead);
 
-      return reply.status(200).send({
-        success: true,
-        data: evidence,
-        count: evidence.length
-      });
+      return sendSuccess(reply, { items: evidence, count: evidence.length });
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to get expiring evidence');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to get expiring evidence'
-      });
+      return handleRouteError(error, reply, { operation: 'getExpiringEvidence', tenantId: ctx.tenantId });
     }
   });
 
@@ -243,32 +176,22 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{
     Params: { controlId: string };
   }>('/evidence/gaps/:controlId', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { controlId } = request.params;
 
     try {
       const analysis = await evidenceService.analyzeEvidenceGaps(
-        context.tenantId,
+        ctx.tenantId,
         [controlId]
       );
 
       if (analysis.length === 0) {
-        return reply.status(404).send({
-          success: false,
-          error: `Control not found: ${controlId}`
-        });
+        return sendNotFound(reply, 'Control', controlId);
       }
 
-      return reply.status(200).send({
-        success: true,
-        data: analysis[0]
-      });
+      return sendSuccess(reply, analysis[0]);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, controlId }, 'Failed to analyze evidence gaps');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to analyze evidence gaps'
-      });
+      return handleRouteError(error, reply, { operation: 'analyzeEvidenceGaps', tenantId: ctx.tenantId, controlId });
     }
   });
 
@@ -277,40 +200,26 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
    * Analyze evidence gaps for multiple controls
    */
   fastify.post('/evidence/gaps/bulk', async (request: FastifyRequest, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const body = request.body as { controlIds?: string[] };
 
     try {
       if (!body.controlIds || !Array.isArray(body.controlIds) || body.controlIds.length === 0) {
-        return reply.status(400).send({
-          success: false,
-          error: 'controlIds array is required'
-        });
+        return sendError(reply, 'controlIds array is required');
       }
 
       if (body.controlIds.length > 100) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Maximum 100 controls per request'
-        });
+        return sendError(reply, 'Maximum 100 controls per request');
       }
 
       const analysis = await evidenceService.analyzeEvidenceGaps(
-        context.tenantId,
+        ctx.tenantId,
         body.controlIds
       );
 
-      return reply.status(200).send({
-        success: true,
-        data: analysis,
-        count: analysis.length
-      });
+      return sendSuccess(reply, { items: analysis, count: analysis.length });
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to analyze evidence gaps');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to analyze evidence gaps'
-      });
+      return handleRouteError(error, reply, { operation: 'analyzeEvidenceGapsBulk', tenantId: ctx.tenantId });
     }
   });
 
@@ -321,29 +230,19 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{
     Params: { evidenceId: string };
   }>('/evidence/:evidenceId', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { evidenceId } = request.params;
 
     try {
-      const evidence = await evidenceService.getEvidence(context.tenantId, evidenceId);
+      const evidence = await evidenceService.getEvidence(ctx.tenantId, evidenceId);
 
       if (!evidence) {
-        return reply.status(404).send({
-          success: false,
-          error: `Evidence not found: ${evidenceId}`
-        });
+        return sendNotFound(reply, 'Evidence', evidenceId);
       }
 
-      return reply.status(200).send({
-        success: true,
-        data: evidence
-      });
+      return sendSuccess(reply, evidence);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, evidenceId }, 'Failed to get evidence');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to get evidence'
-      });
+      return handleRouteError(error, reply, { operation: 'getEvidence', tenantId: ctx.tenantId, evidenceId });
     }
   });
 
@@ -355,13 +254,13 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
     Params: { controlId: string };
     Querystring: { status?: string; limit?: string };
   }>('/evidence/control/:controlId', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { controlId } = request.params;
     const { status, limit } = request.query;
 
     try {
       const evidence = await evidenceService.getControlEvidence(
-        context.tenantId,
+        ctx.tenantId,
         controlId,
         {
           status: status as EvidenceStatus,
@@ -369,17 +268,9 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
         }
       );
 
-      return reply.status(200).send({
-        success: true,
-        data: evidence,
-        count: evidence.length
-      });
+      return sendSuccess(reply, { items: evidence, count: evidence.length });
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, controlId }, 'Failed to get control evidence');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to get control evidence'
-      });
+      return handleRouteError(error, reply, { operation: 'getControlEvidence', tenantId: ctx.tenantId, controlId });
     }
   });
 
@@ -390,35 +281,25 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.patch<{
     Params: { evidenceId: string };
   }>('/evidence/:evidenceId/status', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { evidenceId } = request.params;
     const body = request.body as { status?: string; reviewNotes?: string };
 
     try {
       if (!body.status || !['approved', 'rejected'].includes(body.status)) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Status must be "approved" or "rejected"'
-        });
+        return sendError(reply, 'Status must be "approved" or "rejected"');
       }
 
       const evidence = await evidenceService.updateEvidenceStatus(
-        context,
+        ctx,
         evidenceId,
         body.status as 'approved' | 'rejected',
         body.reviewNotes
       );
 
-      return reply.status(200).send({
-        success: true,
-        data: evidence
-      });
+      return sendSuccess(reply, evidence);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, evidenceId }, 'Failed to update evidence status');
-      return reply.status(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update evidence status'
-      });
+      return handleRouteError(error, reply, { operation: 'updateEvidenceStatus', tenantId: ctx.tenantId, evidenceId });
     }
   });
 
@@ -429,34 +310,24 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.patch<{
     Params: { evidenceId: string };
   }>('/evidence/:evidenceId/link-finding', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { evidenceId } = request.params;
     const body = request.body as { findingId?: string };
 
     try {
       if (!body.findingId) {
-        return reply.status(400).send({
-          success: false,
-          error: 'findingId is required'
-        });
+        return sendError(reply, 'findingId is required');
       }
 
       const evidence = await evidenceService.linkToFinding(
-        context,
+        ctx,
         evidenceId,
         body.findingId
       );
 
-      return reply.status(200).send({
-        success: true,
-        data: evidence
-      });
+      return sendSuccess(reply, evidence);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, evidenceId }, 'Failed to link evidence');
-      return reply.status(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to link evidence'
-      });
+      return handleRouteError(error, reply, { operation: 'linkEvidenceToFinding', tenantId: ctx.tenantId, evidenceId });
     }
   });
 
@@ -467,22 +338,15 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete<{
     Params: { evidenceId: string };
   }>('/evidence/:evidenceId', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { evidenceId } = request.params;
 
     try {
-      await evidenceService.deleteEvidence(context, evidenceId);
+      await evidenceService.deleteEvidence(ctx, evidenceId);
 
-      return reply.status(200).send({
-        success: true,
-        message: 'Evidence deleted successfully'
-      });
+      return sendSuccess(reply, { message: 'Evidence deleted successfully' });
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, evidenceId }, 'Failed to delete evidence');
-      return reply.status(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to delete evidence'
-      });
+      return handleRouteError(error, reply, { operation: 'deleteEvidence', tenantId: ctx.tenantId, evidenceId });
     }
   });
 
@@ -491,21 +355,14 @@ export async function evidenceRoutes(fastify: FastifyInstance): Promise<void> {
    * Mark expired evidence
    */
   fastify.post('/evidence/expire-check', async (request: FastifyRequest, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
-      const count = await evidenceService.markExpiredEvidence(context.tenantId);
+      const count = await evidenceService.markExpiredEvidence(ctx.tenantId);
 
-      return reply.status(200).send({
-        success: true,
-        message: `Marked ${count} evidence items as expired`
-      });
+      return sendSuccess(reply, { message: `Marked ${count} evidence items as expired`, count });
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to check expired evidence');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to check expired evidence'
-      });
+      return handleRouteError(error, reply, { operation: 'markExpiredEvidence', tenantId: ctx.tenantId });
     }
   });
 }

@@ -44,6 +44,30 @@ export type {
   ApiResponse,
   CreateTensionInput,
   UpdateTensionInput,
+  // Assessment types
+  AssessmentStatus,
+  FindingStatus,
+  FindingSeverity,
+  EvidenceType,
+  Assessment,
+  AssessmentFinding,
+  EvidenceItem,
+  RemediationPlan,
+  CreateAssessmentInput,
+  RunAssessmentInput,
+  UpdateFindingInput,
+  CreateEvidenceInput,
+  CreateRemediationPlanInput,
+  AssessmentListResponse,
+  FindingListResponse,
+  PaginatedResponse,
+  // Report types
+  ReportType,
+  ReportFormat,
+  ComplianceReport,
+  GenerateReportInput,
+  // AI System types
+  AISystem,
 } from '@/types/compliance'
 
 // Import types for use in this file
@@ -72,6 +96,26 @@ import type {
   ApiResponse,
   CreateTensionInput,
   UpdateTensionInput,
+  // Assessment types
+  AssessmentStatus,
+  Assessment,
+  AssessmentFinding,
+  EvidenceItem,
+  RemediationPlan,
+  CreateAssessmentInput,
+  RunAssessmentInput,
+  UpdateFindingInput,
+  CreateEvidenceInput,
+  CreateRemediationPlanInput,
+  AssessmentListResponse,
+  FindingListResponse,
+  // Report types
+  ReportType,
+  ReportFormat,
+  ComplianceReport,
+  GenerateReportInput,
+  // AI System types
+  AISystem,
 } from '@/types/compliance'
 
 // Re-export type guards and constants for convenience
@@ -305,6 +349,247 @@ export const complianceApi = {
 
   updateRegulatoryStatus: (updateId: string, status: RegulatoryUpdateStatus) =>
     api.patch<ApiResponse<RegulatoryUpdate>>(`/regulatory/updates/${updateId}/status`, { status }).then(r => r.data),
+
+  // ========== Assessments ==========
+  listAssessments: (params?: {
+    frameworkId?: FrameworkId
+    status?: AssessmentStatus
+    targetSystemId?: string
+    page?: number
+    limit?: number
+  }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.frameworkId) searchParams.set('frameworkId', params.frameworkId)
+    if (params?.status) searchParams.set('status', params.status)
+    if (params?.targetSystemId) searchParams.set('targetSystemId', params.targetSystemId)
+    if (params?.page) searchParams.set('page', String(params.page))
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    const qs = searchParams.toString()
+    return api.get<ApiResponse<AssessmentListResponse>>(`/assessments${qs ? `?${qs}` : ''}`).then(r => r.data)
+  },
+
+  getAssessment: (assessmentId: string) =>
+    api.get<ApiResponse<Assessment>>(`/assessments/${assessmentId}`).then(r => r.data),
+
+  createAssessment: (data: CreateAssessmentInput) =>
+    api.post<ApiResponse<Assessment>>('/assessments', data).then(r => r.data),
+
+  runAssessment: (assessmentId: string, options?: RunAssessmentInput) =>
+    api.post<ApiResponse<Assessment>>(`/assessments/${assessmentId}/run`, options || {}).then(r => r.data),
+
+  cancelAssessment: (assessmentId: string) =>
+    api.post<ApiResponse<Assessment>>(`/assessments/${assessmentId}/cancel`).then(r => r.data),
+
+  deleteAssessment: (assessmentId: string) =>
+    api.delete(`/assessments/${assessmentId}`),
+
+  getAssessmentStats: () =>
+    api.get<ApiResponse<{
+      total: number
+      byStatus: Record<AssessmentStatus, number>
+      byFramework: Record<FrameworkId, number>
+      averageScore: number
+    }>>('/assessments/stats').then(r => r.data),
+
+  // ========== Findings ==========
+  listFindings: (params?: {
+    assessmentId?: string
+    status?: string
+    severity?: string
+    controlId?: string
+    page?: number
+    limit?: number
+  }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.assessmentId) searchParams.set('assessmentId', params.assessmentId)
+    if (params?.status) searchParams.set('status', params.status)
+    if (params?.severity) searchParams.set('severity', params.severity)
+    if (params?.controlId) searchParams.set('controlId', params.controlId)
+    if (params?.page) searchParams.set('page', String(params.page))
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    const qs = searchParams.toString()
+    return api.get<ApiResponse<FindingListResponse>>(`/assessments/findings${qs ? `?${qs}` : ''}`).then(r => r.data)
+  },
+
+  getFinding: (findingId: string) =>
+    api.get<ApiResponse<AssessmentFinding>>(`/assessments/findings/${findingId}`).then(r => r.data),
+
+  updateFinding: (findingId: string, data: UpdateFindingInput) =>
+    api.patch<ApiResponse<AssessmentFinding>>(`/assessments/findings/${findingId}`, data).then(r => r.data),
+
+  getAssessmentFindings: (assessmentId: string, params?: {
+    status?: string
+    severity?: string
+    page?: number
+    limit?: number
+  }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.status) searchParams.set('status', params.status)
+    if (params?.severity) searchParams.set('severity', params.severity)
+    if (params?.page) searchParams.set('page', String(params.page))
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    const qs = searchParams.toString()
+    return api.get<ApiResponse<FindingListResponse>>(`/assessments/${assessmentId}/findings${qs ? `?${qs}` : ''}`).then(r => r.data)
+  },
+
+  // ========== Evidence ==========
+  listEvidence: (params?: {
+    controlId?: string
+    findingId?: string
+    assessmentId?: string
+    type?: string
+    status?: string
+    page?: number
+    limit?: number
+  }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.controlId) searchParams.set('controlId', params.controlId)
+    if (params?.findingId) searchParams.set('findingId', params.findingId)
+    if (params?.assessmentId) searchParams.set('assessmentId', params.assessmentId)
+    if (params?.type) searchParams.set('type', params.type)
+    if (params?.status) searchParams.set('status', params.status)
+    if (params?.page) searchParams.set('page', String(params.page))
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    const qs = searchParams.toString()
+    return api.get<ApiResponse<{ data: EvidenceItem[]; total: number }>>(`/evidence${qs ? `?${qs}` : ''}`).then(r => r.data)
+  },
+
+  getEvidence: (evidenceId: string) =>
+    api.get<ApiResponse<EvidenceItem>>(`/evidence/${evidenceId}`).then(r => r.data),
+
+  createEvidence: (data: CreateEvidenceInput) =>
+    api.post<ApiResponse<EvidenceItem>>('/evidence', data).then(r => r.data),
+
+  updateEvidenceStatus: (evidenceId: string, status: 'approved' | 'rejected', reviewNotes?: string) =>
+    api.patch<ApiResponse<EvidenceItem>>(`/evidence/${evidenceId}/status`, { status, reviewNotes }).then(r => r.data),
+
+  linkEvidenceToFinding: (evidenceId: string, findingId: string) =>
+    api.patch<ApiResponse<EvidenceItem>>(`/evidence/${evidenceId}/link-finding`, { findingId }).then(r => r.data),
+
+  deleteEvidence: (evidenceId: string) =>
+    api.delete(`/evidence/${evidenceId}`),
+
+  uploadEvidence: (formData: FormData) =>
+    api.post<ApiResponse<EvidenceItem>>('/evidence/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data),
+
+  getEvidenceStats: () =>
+    api.get<ApiResponse<{
+      total: number
+      byType: Record<string, number>
+      byStatus: Record<string, number>
+      pendingReview: number
+      expiringWithin30Days: number
+    }>>('/evidence/stats').then(r => r.data),
+
+  getExpiringEvidence: (days = 30) =>
+    api.get<ApiResponse<EvidenceItem[]>>(`/evidence/expiring?days=${days}`).then(r => r.data),
+
+  // ========== Remediation Plans ==========
+  listRemediationPlans: (params?: {
+    findingId?: string
+    status?: string
+    priority?: string
+    assignedTo?: string
+    page?: number
+    limit?: number
+  }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.findingId) searchParams.set('findingId', params.findingId)
+    if (params?.status) searchParams.set('status', params.status)
+    if (params?.priority) searchParams.set('priority', params.priority)
+    if (params?.assignedTo) searchParams.set('assignedTo', params.assignedTo)
+    if (params?.page) searchParams.set('page', String(params.page))
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    const qs = searchParams.toString()
+    return api.get<ApiResponse<{ data: RemediationPlan[]; total: number }>>(`/remediation${qs ? `?${qs}` : ''}`).then(r => r.data)
+  },
+
+  getRemediationPlan: (planId: string) =>
+    api.get<ApiResponse<RemediationPlan>>(`/remediation/${planId}`).then(r => r.data),
+
+  createRemediationPlan: (data: CreateRemediationPlanInput) =>
+    api.post<ApiResponse<RemediationPlan>>('/remediation', data).then(r => r.data),
+
+  updateRemediationPlan: (planId: string, data: Partial<CreateRemediationPlanInput>) =>
+    api.patch<ApiResponse<RemediationPlan>>(`/remediation/${planId}`, data).then(r => r.data),
+
+  updateRemediationStatus: (planId: string, status: string) =>
+    api.patch<ApiResponse<RemediationPlan>>(`/remediation/${planId}/status`, { status }).then(r => r.data),
+
+  completeRemediationTask: (planId: string, taskId: string) =>
+    api.patch<ApiResponse<RemediationPlan>>(`/remediation/${planId}/tasks/${taskId}/complete`).then(r => r.data),
+
+  deleteRemediationPlan: (planId: string) =>
+    api.delete(`/remediation/${planId}`),
+
+  // ========== Reports ==========
+  listReports: (params?: {
+    assessmentId?: string
+    reportType?: ReportType
+    status?: string
+    page?: number
+    limit?: number
+  }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.assessmentId) searchParams.set('assessmentId', params.assessmentId)
+    if (params?.reportType) searchParams.set('reportType', params.reportType)
+    if (params?.status) searchParams.set('status', params.status)
+    if (params?.page) searchParams.set('page', String(params.page))
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    const qs = searchParams.toString()
+    return api.get<ApiResponse<{ data: ComplianceReport[]; total: number }>>(`/reports${qs ? `?${qs}` : ''}`).then(r => r.data)
+  },
+
+  getReport: (reportId: string) =>
+    api.get<ApiResponse<ComplianceReport>>(`/reports/${reportId}`).then(r => r.data),
+
+  generateReport: (data: GenerateReportInput) =>
+    api.post<ApiResponse<ComplianceReport>>('/reports/generate', data).then(r => r.data),
+
+  downloadReport: (reportId: string) =>
+    api.get<Blob>(`/reports/${reportId}/download`, { responseType: 'blob' }).then(r => r),
+
+  deleteReport: (reportId: string) =>
+    api.delete(`/reports/${reportId}`),
+
+  // ========== AI Systems ==========
+  listAISystems: (params?: {
+    status?: string
+    riskCategory?: string
+    page?: number
+    limit?: number
+  }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.status) searchParams.set('status', params.status)
+    if (params?.riskCategory) searchParams.set('riskCategory', params.riskCategory)
+    if (params?.page) searchParams.set('page', String(params.page))
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    const qs = searchParams.toString()
+    return api.get<ApiResponse<{ data: AISystem[]; total: number }>>(`/ai-systems${qs ? `?${qs}` : ''}`).then(r => r.data)
+  },
+
+  getAISystem: (systemId: string) =>
+    api.get<ApiResponse<AISystem>>(`/ai-systems/${systemId}`).then(r => r.data),
+
+  createAISystem: (data: {
+    name: string
+    description?: string
+    riskCategory?: 'unacceptable' | 'high' | 'limited' | 'minimal'
+    owner?: string
+  }) => api.post<ApiResponse<AISystem>>('/ai-systems', data).then(r => r.data),
+
+  updateAISystem: (systemId: string, data: Partial<{
+    name: string
+    description: string
+    riskCategory: 'unacceptable' | 'high' | 'limited' | 'minimal'
+    status: 'active' | 'inactive' | 'archived'
+    owner: string
+  }>) => api.patch<ApiResponse<AISystem>>(`/ai-systems/${systemId}`, data).then(r => r.data),
+
+  deleteAISystem: (systemId: string) =>
+    api.delete(`/ai-systems/${systemId}`),
 }
 
 export default complianceApi

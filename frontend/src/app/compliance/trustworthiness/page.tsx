@@ -7,7 +7,6 @@
 
 'use client'
 
-import { useState } from 'react'
 import {
   Brain,
   CheckCircle2,
@@ -28,8 +27,7 @@ import {
 import { PageHeader } from '@/components/compliance'
 import { StatCard, StatGrid } from '@/components/coinest'
 import { ChartCard } from '@/components/coinest'
-import { useTheme } from '@/stores/theme-store'
-import { useThemeClasses } from '@/hooks/useThemeClasses'
+import { useThemeClasses, useThemeColors } from '@/hooks/useThemeClasses'
 import { cn, snakeToTitle } from '@/lib/utils'
 import Link from 'next/link'
 
@@ -90,26 +88,17 @@ const RATING_COLORS = {
   inconclusive: { bg: 'bg-neutral-500/20', text: 'text-neutral-400', label: 'Inconclusive' },
 }
 
-const REQUIREMENT_COLORS: Record<string, string> = {
-  human_agency_oversight: '#3b82f6',
-  technical_robustness_safety: '#22c55e',
-  privacy_data_governance: '#8b5cf6',
-  transparency: '#f59e0b',
-  diversity_fairness_nondiscrimination: '#ec4899',
-  societal_environmental_wellbeing: '#14b8a6',
-  accountability: '#6366f1',
-}
-
 function CircularProgress({ value, size = 120 }: { value: number; size?: number }) {
-  const { isDark } = useTheme()
+  const themeColors = useThemeColors()
+  const tc = useThemeClasses()
   const radius = (size - 12) / 2
   const circumference = 2 * Math.PI * radius
   const strokeDashoffset = circumference - (value / 100) * circumference
 
   const getColor = (v: number) => {
-    if (v >= 80) return '#22c55e'
-    if (v >= 60) return '#eab308'
-    return '#ef4444'
+    if (v >= 80) return themeColors.status.success
+    if (v >= 60) return themeColors.status.warning
+    return themeColors.status.error
   }
 
   return (
@@ -120,7 +109,7 @@ function CircularProgress({ value, size = 120 }: { value: number; size?: number 
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={isDark ? '#333333' : '#e5e7eb'}
+          stroke={themeColors.grid.line}
           strokeWidth={6}
           fill="none"
         />
@@ -139,7 +128,7 @@ function CircularProgress({ value, size = 120 }: { value: number; size?: number 
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className={cn('text-2xl font-bold', isDark ? 'text-white' : 'text-neutral-900')}>
+        <span className={cn('text-2xl font-bold', tc.textPrimary)}>
           {value}%
         </span>
       </div>
@@ -153,7 +142,8 @@ function RequirementScoreCard({
   requirement: typeof assessmentData.requirementAssessments[0]
 }) {
   const tc = useThemeClasses()
-  const color = REQUIREMENT_COLORS[requirement.requirement] || '#6b7280'
+  const themeColors = useThemeColors()
+  const color = themeColors.requirement[requirement.requirement as keyof typeof themeColors.requirement] || themeColors.status.neutral
 
   return (
     <div className={cn('rounded-lg border p-4', tc.card)}>
@@ -225,8 +215,8 @@ function TensionCard({ tension }: { tension: typeof recentTensions[0] }) {
 }
 
 export default function TrustworthinessPage() {
-  const { isDark } = useTheme()
   const tc = useThemeClasses()
+  const themeColors = useThemeColors()
 
   const radarData = assessmentData.requirementAssessments.map((r) => ({
     ...r,
@@ -307,30 +297,30 @@ export default function TrustworthinessPage() {
         >
           <ResponsiveContainer width="100%" height={350}>
             <RadarChart data={radarData}>
-              <PolarGrid stroke={isDark ? '#333333' : '#e5e7eb'} />
+              <PolarGrid stroke={themeColors.grid.line} />
               <PolarAngleAxis
                 dataKey="label"
-                tick={{ fill: isDark ? '#a3a3a3' : '#6b7280', fontSize: 11 }}
+                tick={{ fill: themeColors.grid.text, fontSize: 11 }}
               />
               <PolarRadiusAxis
                 angle={30}
                 domain={[0, 100]}
-                tick={{ fill: isDark ? '#737373' : '#9ca3af', fontSize: 10 }}
+                tick={{ fill: themeColors.grid.text, fontSize: 10 }}
               />
               <Radar
                 name="Score"
                 dataKey="score"
-                stroke="#4faeca"
-                fill="#4faeca"
+                stroke={themeColors.accent.cyan}
+                fill={themeColors.accent.cyan}
                 fillOpacity={0.3}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
-                  border: `1px solid ${isDark ? '#333333' : '#e5e7eb'}`,
+                  backgroundColor: themeColors.chartBg.secondary,
+                  border: `1px solid ${themeColors.grid.line}`,
                   borderRadius: '8px',
                 }}
-                labelStyle={{ color: isDark ? '#ffffff' : '#111827' }}
+                labelStyle={{ color: themeColors.isDark ? '#ffffff' : '#111827' }}
                 formatter={(value: number) => [`${value}%`, 'Score']}
               />
             </RadarChart>

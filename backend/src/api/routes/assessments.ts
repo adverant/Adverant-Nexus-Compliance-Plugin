@@ -7,22 +7,15 @@ import { z } from 'zod';
 import { assessmentService } from '../../services/assessment-service.js';
 import { reportService } from '../../services/report-service.js';
 import { createLogger } from '../../utils/logger.js';
-import type { ComplianceServiceContext } from '../../types/index.js';
+import {
+  getContext,
+  handleRouteError,
+  sendSuccess,
+  sendCreated,
+  sendNotFound,
+} from '../middleware/index.js';
 
 const logger = createLogger('assessment-routes');
-
-function getContext(request: FastifyRequest): ComplianceServiceContext {
-  const tenantId = (request.headers['x-tenant-id'] as string) ||
-    (request.headers['x-user-id'] as string) ||
-    'default';
-  const userId = (request.headers['x-user-id'] as string) || 'system';
-  const requestId = (request.headers['x-request-id'] as string) || request.id;
-  const sessionId = request.headers['x-session-id'] as string | undefined;
-  const ipAddress = request.ip;
-  const userAgent = request.headers['user-agent'];
-
-  return { tenantId, userId, requestId, sessionId, ipAddress, userAgent };
-}
 
 const createAssessmentSchema = z.object({
   frameworkId: z.string().min(1),
@@ -71,32 +64,16 @@ export async function assessmentRoutes(fastify: FastifyInstance): Promise<void> 
    * Create a new compliance assessment
    */
   fastify.post('/assessments', async (request: FastifyRequest, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
       const body = createAssessmentSchema.parse(request.body);
 
-      const assessment = await assessmentService.createAssessment(context, body);
+      const assessment = await assessmentService.createAssessment(ctx, body);
 
-      return reply.status(201).send({
-        success: true,
-        data: assessment,
-        message: 'Assessment created. Use POST /assessments/:id/run to execute.',
-      });
+      return sendCreated(reply, assessment);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors,
-        });
-      }
-
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to create assessment');
-      return reply.status(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to create assessment',
-      });
+      return handleRouteError(error, reply, { operation: 'create assessment', tenantId: ctx.tenantId });
     }
   });
 
@@ -115,31 +92,16 @@ export async function assessmentRoutes(fastify: FastifyInstance): Promise<void> 
       sortOrder?: string;
     };
   }>('/assessments', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
       const params = listQuerySchema.parse(request.query);
 
-      const result = await assessmentService.listAssessments(context.tenantId, params);
+      const result = await assessmentService.listAssessments(ctx.tenantId, params);
 
-      return reply.status(200).send({
-        success: true,
-        ...result,
-      });
+      return sendSuccess(reply, result);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors,
-        });
-      }
-
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to list assessments');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to retrieve assessments',
-      });
+      return handleRouteError(error, reply, { operation: 'list assessments', tenantId: ctx.tenantId });
     }
   });
 
@@ -150,32 +112,22 @@ export async function assessmentRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.get<{
     Params: { assessmentId: string };
   }>('/assessments/:assessmentId', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { assessmentId } = request.params;
 
     try {
       const assessment = await assessmentService.getAssessment(
-        context.tenantId,
+        ctx.tenantId,
         assessmentId
       );
 
       if (!assessment) {
-        return reply.status(404).send({
-          success: false,
-          error: `Assessment not found: ${assessmentId}`,
-        });
+        return sendNotFound(reply, 'Assessment', assessmentId);
       }
 
-      return reply.status(200).send({
-        success: true,
-        data: assessment,
-      });
+      return sendSuccess(reply, assessment);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, assessmentId }, 'Failed to get assessment');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to retrieve assessment',
-      });
+      return handleRouteError(error, reply, { operation: 'get assessment', tenantId: ctx.tenantId });
     }
   });
 
@@ -186,37 +138,21 @@ export async function assessmentRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.post<{
     Params: { assessmentId: string };
   }>('/assessments/:assessmentId/run', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { assessmentId } = request.params;
 
     try {
       const body = runAssessmentSchema.parse(request.body ?? {});
 
       const assessment = await assessmentService.runAssessment(
-        context,
+        ctx,
         assessmentId,
         body
       );
 
-      return reply.status(200).send({
-        success: true,
-        data: assessment,
-        message: `Assessment completed with score: ${assessment.overallScore}%`,
-      });
+      return sendSuccess(reply, assessment);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors,
-        });
-      }
-
-      logger.error({ err: error, tenantId: context.tenantId, assessmentId }, 'Failed to run assessment');
-      return reply.status(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to run assessment',
-      });
+      return handleRouteError(error, reply, { operation: 'run assessment', tenantId: ctx.tenantId });
     }
   });
 
@@ -233,36 +169,21 @@ export async function assessmentRoutes(fastify: FastifyInstance): Promise<void> 
       limit?: string;
     };
   }>('/assessments/:assessmentId/findings', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { assessmentId } = request.params;
 
     try {
       const params = findingsQuerySchema.parse(request.query);
 
       const result = await assessmentService.getFindings(
-        context.tenantId,
+        ctx.tenantId,
         assessmentId,
         params
       );
 
-      return reply.status(200).send({
-        success: true,
-        ...result,
-      });
+      return sendSuccess(reply, result);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors,
-        });
-      }
-
-      logger.error({ err: error, tenantId: context.tenantId, assessmentId }, 'Failed to get findings');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to retrieve findings',
-      });
+      return handleRouteError(error, reply, { operation: 'get findings', tenantId: ctx.tenantId });
     }
   });
 
@@ -271,31 +192,16 @@ export async function assessmentRoutes(fastify: FastifyInstance): Promise<void> 
    * Generate a compliance report
    */
   fastify.post('/reports/generate', async (request: FastifyRequest, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
       const body = generateReportSchema.parse(request.body);
 
-      const report = await reportService.generateReport(context, body);
+      const report = await reportService.generateReport(ctx, body);
 
-      return reply.status(201).send({
-        success: true,
-        data: report,
-      });
+      return sendCreated(reply, report);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors,
-        });
-      }
-
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to generate report');
-      return reply.status(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to generate report',
-      });
+      return handleRouteError(error, reply, { operation: 'generate report', tenantId: ctx.tenantId });
     }
   });
 
@@ -311,29 +217,21 @@ export async function assessmentRoutes(fastify: FastifyInstance): Promise<void> 
       offset?: string;
     };
   }>('/reports', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
       const { reportType, format, limit = '20', offset = '0' } = request.query;
 
-      const result = await reportService.listReports(context.tenantId, {
+      const result = await reportService.listReports(ctx.tenantId, {
         reportType: reportType as any,
         format: format as any,
         limit: parseInt(limit, 10),
         offset: parseInt(offset, 10),
       });
 
-      return reply.status(200).send({
-        success: true,
-        data: result.reports,
-        total: result.total,
-      });
+      return sendSuccess(reply, { data: result.reports, total: result.total });
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to list reports');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to retrieve reports',
-      });
+      return handleRouteError(error, reply, { operation: 'list reports', tenantId: ctx.tenantId });
     }
   });
 
@@ -344,29 +242,19 @@ export async function assessmentRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.get<{
     Params: { reportId: string };
   }>('/reports/:reportId', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { reportId } = request.params;
 
     try {
-      const report = await reportService.getReport(context.tenantId, reportId);
+      const report = await reportService.getReport(ctx.tenantId, reportId);
 
       if (!report) {
-        return reply.status(404).send({
-          success: false,
-          error: `Report not found: ${reportId}`,
-        });
+        return sendNotFound(reply, 'Report', reportId);
       }
 
-      return reply.status(200).send({
-        success: true,
-        data: report,
-      });
+      return sendSuccess(reply, report);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, reportId }, 'Failed to get report');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to retrieve report',
-      });
+      return handleRouteError(error, reply, { operation: 'get report', tenantId: ctx.tenantId });
     }
   });
 }

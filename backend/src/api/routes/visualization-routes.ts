@@ -1,55 +1,72 @@
 /**
- * Visualization API Routes
+ * Visualization API Routes (Fastify)
  *
  * Endpoints for generating chart and graph data for compliance dashboards.
  */
 
-import { Router, Request, Response, NextFunction } from 'express';
-import { Pool } from 'pg';
+import { FastifyInstance, FastifyReply } from 'fastify';
+import { getPool } from '../../database/client.js';
+import { VisualizationService, ChartType } from '../../services/visualization-service.js';
+import { getContext, handleRouteError, sendSuccess, sendError } from '../middleware/index.js';
 
-import { VisualizationService } from '../../services/visualization-service';
+// Valid chart types for validation
+const VALID_CHART_TYPES: ChartType[] = ['sankey', 'heatmap', 'network', 'radar', 'bar', 'treemap', 'sunburst'];
+
+function isValidChartType(value: string | undefined): value is ChartType {
+  return value === undefined || VALID_CHART_TYPES.includes(value as ChartType);
+}
+
+// Lazy singleton service
+let _visualizationService: VisualizationService | null = null;
+function getService(): VisualizationService {
+  if (!_visualizationService) {
+    _visualizationService = new VisualizationService(getPool());
+  }
+  return _visualizationService;
+}
 
 // ============================================================================
-// Route Factory
+// Route Registration
 // ============================================================================
 
-export function createVisualizationRoutes(pool: Pool): Router {
-  const router = Router();
-  const visualizationService = new VisualizationService(pool);
-
+export async function visualizationRoutes(fastify: FastifyInstance): Promise<void> {
   // ==========================================================================
   // Sankey Diagrams
   // ==========================================================================
 
   /**
    * Get Sankey diagram data for requirements → controls mapping
-   * GET /api/v1/compliance/visualization/sankey
+   * GET /sankey
    */
-  router.get('/sankey', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { frameworks, cacheEnabled } = req.query;
+  fastify.get<{
+    Querystring: { frameworks?: string; cacheEnabled?: string };
+  }>('/sankey', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { frameworks, cacheEnabled } = request.query;
 
-      const data = await visualizationService.getSankeyData({
-        frameworks: frameworks ? (frameworks as string).split(',') : undefined,
+    try {
+      const data = await getService().getSankeyData({
+        frameworks: frameworks ? frameworks.split(',') : undefined,
         cacheEnabled: cacheEnabled !== 'false'
       });
 
-      res.json(data);
+      sendSuccess(reply, data);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'get Sankey data', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Get Sankey diagram for framework-to-framework mappings
-   * GET /api/v1/compliance/visualization/sankey/frameworks
+   * GET /sankey/frameworks
    */
-  router.get('/sankey/frameworks', async (req: Request, res: Response, next: NextFunction) => {
+  fastify.get('/sankey/frameworks', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
     try {
-      const data = await visualizationService.getFrameworkSankeyData();
-      res.json(data);
+      const data = await getService().getFrameworkSankeyData();
+      sendSuccess(reply, data);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'get framework Sankey data', tenantId: ctx.tenantId });
     }
   });
 
@@ -59,33 +76,37 @@ export function createVisualizationRoutes(pool: Pool): Router {
 
   /**
    * Get compliance coverage heatmap (frameworks × requirements)
-   * GET /api/v1/compliance/visualization/heatmap
+   * GET /heatmap
    */
-  router.get('/heatmap', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { frameworks, cacheEnabled } = req.query;
+  fastify.get<{
+    Querystring: { frameworks?: string; cacheEnabled?: string };
+  }>('/heatmap', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { frameworks, cacheEnabled } = request.query;
 
-      const data = await visualizationService.getComplianceHeatmap({
-        frameworks: frameworks ? (frameworks as string).split(',') : undefined,
+    try {
+      const data = await getService().getComplianceHeatmap({
+        frameworks: frameworks ? frameworks.split(',') : undefined,
         cacheEnabled: cacheEnabled !== 'false'
       });
 
-      res.json(data);
+      sendSuccess(reply, data);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'get compliance heatmap', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Get cross-framework mapping heatmap
-   * GET /api/v1/compliance/visualization/heatmap/cross-framework
+   * GET /heatmap/cross-framework
    */
-  router.get('/heatmap/cross-framework', async (req: Request, res: Response, next: NextFunction) => {
+  fastify.get('/heatmap/cross-framework', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
     try {
-      const data = await visualizationService.getCrossFrameworkHeatmap();
-      res.json(data);
+      const data = await getService().getCrossFrameworkHeatmap();
+      sendSuccess(reply, data);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'get cross-framework heatmap', tenantId: ctx.tenantId });
     }
   });
 
@@ -95,32 +116,40 @@ export function createVisualizationRoutes(pool: Pool): Router {
 
   /**
    * Get control relationship network graph
-   * GET /api/v1/compliance/visualization/network-graph
+   * GET /network-graph
    */
-  router.get('/network-graph', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { cacheEnabled } = req.query;
+  fastify.get<{
+    Querystring: { cacheEnabled?: string };
+  }>('/network-graph', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { cacheEnabled } = request.query;
 
-      const data = await visualizationService.getControlNetworkGraph({
+    try {
+      const data = await getService().getControlNetworkGraph({
         cacheEnabled: cacheEnabled !== 'false'
       });
 
-      res.json(data);
+      sendSuccess(reply, data);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'get network graph', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Get detailed control network for a specific framework
-   * GET /api/v1/compliance/visualization/network-graph/:frameworkId
+   * GET /network-graph/:frameworkId
    */
-  router.get('/network-graph/:frameworkId', async (req: Request, res: Response, next: NextFunction) => {
+  fastify.get<{
+    Params: { frameworkId: string };
+  }>('/network-graph/:frameworkId', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { frameworkId } = request.params;
+
     try {
-      const data = await visualizationService.getFrameworkControlNetwork(req.params.frameworkId);
-      res.json(data);
+      const data = await getService().getFrameworkControlNetwork(frameworkId);
+      sendSuccess(reply, data);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'get framework control network', tenantId: ctx.tenantId });
     }
   });
 
@@ -130,45 +159,49 @@ export function createVisualizationRoutes(pool: Pool): Router {
 
   /**
    * Get multi-framework radar chart data
-   * GET /api/v1/compliance/visualization/radar
+   * GET /radar
    */
-  router.get('/radar', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: { tenantId?: string; frameworks?: string };
+  }>('/radar', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, frameworks } = request.query;
+
+    if (!tenantId) {
+      return sendError(reply, 'tenantId query parameter is required', 400);
+    }
+
     try {
-      const { tenantId, frameworks } = req.query;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
-      }
-
-      const data = await visualizationService.getFrameworkRadarData(
-        tenantId as string,
-        frameworks ? (frameworks as string).split(',') : undefined
+      const data = await getService().getFrameworkRadarData(
+        tenantId,
+        frameworks ? frameworks.split(',') : undefined
       );
 
-      res.json(data);
+      sendSuccess(reply, data);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'get radar data', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Get tenant compliance radar across frameworks
-   * GET /api/v1/compliance/visualization/radar/tenant
+   * GET /radar/tenant
    */
-  router.get('/radar/tenant', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: { tenantId?: string };
+  }>('/radar/tenant', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId } = request.query;
+
+    if (!tenantId) {
+      return sendError(reply, 'tenantId query parameter is required', 400);
+    }
+
     try {
-      const { tenantId } = req.query;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
-      }
-
-      const data = await visualizationService.getTenantComplianceRadar(tenantId as string);
-      res.json(data);
+      const data = await getService().getTenantComplianceRadar(tenantId);
+      sendSuccess(reply, data);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'get tenant radar data', tenantId: ctx.tenantId });
     }
   });
 
@@ -178,16 +211,19 @@ export function createVisualizationRoutes(pool: Pool): Router {
 
   /**
    * Get control hierarchy treemap
-   * GET /api/v1/compliance/visualization/treemap
+   * GET /treemap
    */
-  router.get('/treemap', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { frameworkId } = req.query;
+  fastify.get<{
+    Querystring: { frameworkId?: string };
+  }>('/treemap', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { frameworkId } = request.query;
 
-      const data = await visualizationService.getControlTreemap(frameworkId as string);
-      res.json(data);
+    try {
+      const data = await getService().getControlTreemap(frameworkId);
+      sendSuccess(reply, data);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'get treemap data', tenantId: ctx.tenantId });
     }
   });
 
@@ -197,21 +233,23 @@ export function createVisualizationRoutes(pool: Pool): Router {
 
   /**
    * Get comprehensive dashboard data
-   * GET /api/v1/compliance/visualization/dashboard
+   * GET /dashboard
    */
-  router.get('/dashboard', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: { tenantId?: string };
+  }>('/dashboard', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId } = request.query;
+
+    if (!tenantId) {
+      return sendError(reply, 'tenantId query parameter is required', 400);
+    }
+
     try {
-      const { tenantId } = req.query;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
-      }
-
-      const data = await visualizationService.getDashboardData(tenantId as string);
-      res.json(data);
+      const data = await getService().getDashboardData(tenantId);
+      sendSuccess(reply, data);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'get dashboard data', tenantId: ctx.tenantId });
     }
   });
 
@@ -221,14 +259,19 @@ export function createVisualizationRoutes(pool: Pool): Router {
 
   /**
    * Get Z-Inspection report visualization data
-   * GET /api/v1/compliance/visualization/z-inspection/:reportId
+   * GET /z-inspection/:reportId
    */
-  router.get('/z-inspection/:reportId', async (req: Request, res: Response, next: NextFunction) => {
+  fastify.get<{
+    Params: { reportId: string };
+  }>('/z-inspection/:reportId', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { reportId } = request.params;
+
     try {
-      const data = await visualizationService.getZInspectionVisualization(req.params.reportId);
-      res.json(data);
+      const data = await getService().getZInspectionVisualization(reportId);
+      sendSuccess(reply, data);
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'get Z-Inspection visualization', tenantId: ctx.tenantId });
     }
   });
 
@@ -238,30 +281,38 @@ export function createVisualizationRoutes(pool: Pool): Router {
 
   /**
    * Clear visualization cache
-   * POST /api/v1/compliance/visualization/cache/clear
+   * POST /cache/clear
    */
-  router.post('/cache/clear', async (req: Request, res: Response, next: NextFunction) => {
+  fastify.post<{
+    Body: { chartType?: string };
+  }>('/cache/clear', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { chartType } = request.body || {};
+
+    // Validate chartType if provided
+    if (chartType && !isValidChartType(chartType)) {
+      return sendError(reply, `Invalid chartType. Must be one of: ${VALID_CHART_TYPES.join(', ')}`, 400);
+    }
+
     try {
-      const { chartType } = req.body;
-      const deleted = await visualizationService.clearCache(chartType);
-      res.json({ success: true, entriesDeleted: deleted });
+      const deleted = await getService().clearCache(chartType as ChartType | undefined);
+      sendSuccess(reply, { entriesDeleted: deleted });
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'clear cache', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Clean expired cache entries
-   * POST /api/v1/compliance/visualization/cache/clean
+   * POST /cache/clean
    */
-  router.post('/cache/clean', async (req: Request, res: Response, next: NextFunction) => {
+  fastify.post('/cache/clean', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
     try {
-      const deleted = await visualizationService.cleanExpiredCache();
-      res.json({ success: true, entriesDeleted: deleted });
+      const deleted = await getService().cleanExpiredCache();
+      sendSuccess(reply, { entriesDeleted: deleted });
     } catch (error) {
-      next(error);
+      handleRouteError(error, reply, { operation: 'clean expired cache', tenantId: ctx.tenantId });
     }
   });
-
-  return router;
 }

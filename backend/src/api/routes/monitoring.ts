@@ -4,23 +4,16 @@
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { createLogger } from '../../utils/logger.js';
 import { monitoringService } from '../../services/monitoring-service.js';
 import { alertService } from '../../services/alert-service.js';
 import { complianceScheduler } from '../../jobs/compliance-scheduler.js';
-import type { ComplianceServiceContext } from '../../types/index.js';
-
-const logger = createLogger('monitoring-routes');
-
-function getContext(request: FastifyRequest): ComplianceServiceContext {
-  const tenantId = (request.headers['x-tenant-id'] as string) ||
-    (request.headers['x-user-id'] as string) ||
-    'default';
-  const userId = (request.headers['x-user-id'] as string) || 'system';
-  const requestId = (request.headers['x-request-id'] as string) || request.id;
-
-  return { tenantId, userId, requestId };
-}
+import {
+  getContext,
+  handleRouteError,
+  sendSuccess,
+  sendCreated,
+  sendNotFound,
+} from '../middleware/index.js';
 
 const createAlertSchema = z.object({
   type: z.enum(['drift', 'expiration', 'new_requirement', 'risk_increase', 'overdue_remediation', 'failed_assessment', 'compliance_breach']),
@@ -55,21 +48,14 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
    * Get monitoring health status
    */
   fastify.get('/monitoring/health', async (request: FastifyRequest, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
-      const health = await monitoringService.getMonitoringHealth(context.tenantId);
+      const health = await monitoringService.getMonitoringHealth(ctx.tenantId);
 
-      return reply.status(200).send({
-        success: true,
-        data: health
-      });
+      return sendSuccess(reply, health);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to get monitoring health');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to get monitoring health'
-      });
+      return handleRouteError(error, reply, { operation: 'get monitoring health', tenantId: ctx.tenantId });
     }
   });
 
@@ -80,7 +66,7 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.post<{
     Body: { assessmentId: string; notes?: string };
   }>('/monitoring/baseline', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { assessmentId, notes } = request.body;
 
     try {
@@ -92,21 +78,14 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
       }
 
       const baseline = await monitoringService.captureBaseline(
-        context,
+        ctx,
         assessmentId,
         notes
       );
 
-      return reply.status(201).send({
-        success: true,
-        data: baseline
-      });
+      return sendCreated(reply, baseline);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, assessmentId }, 'Failed to capture baseline');
-      return reply.status(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to capture baseline'
-      });
+      return handleRouteError(error, reply, { operation: 'capture baseline', tenantId: ctx.tenantId });
     }
   });
 
@@ -117,12 +96,12 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.get<{
     Querystring: { frameworkId?: string; limit?: string };
   }>('/monitoring/baselines', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { frameworkId, limit } = request.query;
 
     try {
       const baselines = await monitoringService.listBaselines(
-        context.tenantId,
+        ctx.tenantId,
         frameworkId,
         limit ? parseInt(limit, 10) : 10
       );
@@ -133,11 +112,7 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
         count: baselines.length
       });
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to list baselines');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to list baselines'
-      });
+      return handleRouteError(error, reply, { operation: 'list baselines', tenantId: ctx.tenantId });
     }
   });
 
@@ -148,32 +123,22 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.get<{
     Params: { frameworkId: string };
   }>('/monitoring/baseline/:frameworkId', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { frameworkId } = request.params;
 
     try {
       const baseline = await monitoringService.getLatestBaseline(
-        context.tenantId,
+        ctx.tenantId,
         frameworkId
       );
 
       if (!baseline) {
-        return reply.status(404).send({
-          success: false,
-          error: `No baseline found for framework: ${frameworkId}`
-        });
+        return sendNotFound(reply, 'Baseline', frameworkId);
       }
 
-      return reply.status(200).send({
-        success: true,
-        data: baseline
-      });
+      return sendSuccess(reply, baseline);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, frameworkId }, 'Failed to get baseline');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to get baseline'
-      });
+      return handleRouteError(error, reply, { operation: 'get baseline', tenantId: ctx.tenantId });
     }
   });
 
@@ -184,7 +149,7 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.post<{
     Body: { frameworkId: string; assessmentId: string };
   }>('/monitoring/drift-check', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { frameworkId, assessmentId } = request.body;
 
     try {
@@ -196,7 +161,7 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
       }
 
       const drifts = await monitoringService.detectDrift(
-        context.tenantId,
+        ctx.tenantId,
         frameworkId,
         assessmentId
       );
@@ -208,11 +173,7 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
         hasDrift: drifts.length > 0
       });
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, frameworkId }, 'Failed to detect drift');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to detect drift'
-      });
+      return handleRouteError(error, reply, { operation: 'detect drift', tenantId: ctx.tenantId });
     }
   });
 
@@ -223,7 +184,7 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.post<{
     Body: { frameworkId: string };
   }>('/monitoring/run-check', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { frameworkId } = request.body;
 
     try {
@@ -235,20 +196,13 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
       }
 
       const result = await monitoringService.runScheduledCheck(
-        context.tenantId,
+        ctx.tenantId,
         frameworkId
       );
 
-      return reply.status(200).send({
-        success: true,
-        data: result
-      });
+      return sendSuccess(reply, result);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, frameworkId }, 'Failed to run check');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to run compliance check'
-      });
+      return handleRouteError(error, reply, { operation: 'run compliance check', tenantId: ctx.tenantId });
     }
   });
 
@@ -260,13 +214,13 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
     Params: { frameworkId: string };
     Querystring: { days?: string };
   }>('/monitoring/trend/:frameworkId', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { frameworkId } = request.params;
     const days = parseInt(request.query.days || '90', 10);
 
     try {
       const trend = await monitoringService.getComplianceTrend(
-        context.tenantId,
+        ctx.tenantId,
         frameworkId,
         days
       );
@@ -277,11 +231,7 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
         count: trend.length
       });
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, frameworkId }, 'Failed to get trend');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to get compliance trend'
-      });
+      return handleRouteError(error, reply, { operation: 'get compliance trend', tenantId: ctx.tenantId });
     }
   });
 
@@ -294,31 +244,16 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
    * Create a new alert
    */
   fastify.post('/alerts', async (request: FastifyRequest, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
       const body = createAlertSchema.parse(request.body);
 
-      const alert = await alertService.createAlert(context, body);
+      const alert = await alertService.createAlert(ctx, body);
 
-      return reply.status(201).send({
-        success: true,
-        data: alert
-      });
+      return sendCreated(reply, alert);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors
-        });
-      }
-
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to create alert');
-      return reply.status(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to create alert'
-      });
+      return handleRouteError(error, reply, { operation: 'create alert', tenantId: ctx.tenantId });
     }
   });
 
@@ -329,12 +264,12 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.get<{
     Querystring: Record<string, string>;
   }>('/alerts', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
       const params = alertSearchSchema.parse(request.query);
 
-      const result = await alertService.searchAlerts(context.tenantId, {
+      const result = await alertService.searchAlerts(ctx.tenantId, {
         ...params,
         fromDate: params.fromDate ? new Date(params.fromDate) : undefined,
         toDate: params.toDate ? new Date(params.toDate) : undefined
@@ -351,19 +286,7 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
         }
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors
-        });
-      }
-
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to search alerts');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to search alerts'
-      });
+      return handleRouteError(error, reply, { operation: 'search alerts', tenantId: ctx.tenantId });
     }
   });
 
@@ -374,11 +297,11 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.get<{
     Querystring: { limit?: string };
   }>('/alerts/active', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const limit = parseInt(request.query.limit || '50', 10);
 
     try {
-      const alerts = await alertService.getActiveAlerts(context.tenantId, limit);
+      const alerts = await alertService.getActiveAlerts(ctx.tenantId, limit);
 
       return reply.status(200).send({
         success: true,
@@ -386,11 +309,7 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
         count: alerts.length
       });
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to get active alerts');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to get active alerts'
-      });
+      return handleRouteError(error, reply, { operation: 'get active alerts', tenantId: ctx.tenantId });
     }
   });
 
@@ -399,21 +318,14 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
    * Get alert statistics
    */
   fastify.get('/alerts/stats', async (request: FastifyRequest, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
-      const stats = await alertService.getAlertStats(context.tenantId);
+      const stats = await alertService.getAlertStats(ctx.tenantId);
 
-      return reply.status(200).send({
-        success: true,
-        data: stats
-      });
+      return sendSuccess(reply, stats);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to get alert stats');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to get alert statistics'
-      });
+      return handleRouteError(error, reply, { operation: 'get alert statistics', tenantId: ctx.tenantId });
     }
   });
 
@@ -422,21 +334,14 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
    * Get alert escalation status
    */
   fastify.get('/alerts/escalation', async (request: FastifyRequest, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
-      const status = await alertService.getEscalationStatus(context.tenantId);
+      const status = await alertService.getEscalationStatus(ctx.tenantId);
 
-      return reply.status(200).send({
-        success: true,
-        data: status
-      });
+      return sendSuccess(reply, status);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to get escalation status');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to get escalation status'
-      });
+      return handleRouteError(error, reply, { operation: 'get escalation status', tenantId: ctx.tenantId });
     }
   });
 
@@ -447,29 +352,19 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.get<{
     Params: { alertId: string };
   }>('/alerts/:alertId', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { alertId } = request.params;
 
     try {
-      const alert = await alertService.getAlert(context.tenantId, alertId);
+      const alert = await alertService.getAlert(ctx.tenantId, alertId);
 
       if (!alert) {
-        return reply.status(404).send({
-          success: false,
-          error: `Alert not found: ${alertId}`
-        });
+        return sendNotFound(reply, 'Alert', alertId);
       }
 
-      return reply.status(200).send({
-        success: true,
-        data: alert
-      });
+      return sendSuccess(reply, alert);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, alertId }, 'Failed to get alert');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to get alert'
-      });
+      return handleRouteError(error, reply, { operation: 'get alert', tenantId: ctx.tenantId });
     }
   });
 
@@ -480,27 +375,20 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.patch<{
     Params: { alertId: string };
   }>('/alerts/:alertId/acknowledge', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { alertId } = request.params;
     const body = request.body as { notes?: string };
 
     try {
       const alert = await alertService.acknowledgeAlert(
-        context,
+        ctx,
         alertId,
         body.notes
       );
 
-      return reply.status(200).send({
-        success: true,
-        data: alert
-      });
+      return sendSuccess(reply, alert);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, alertId }, 'Failed to acknowledge alert');
-      return reply.status(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to acknowledge alert'
-      });
+      return handleRouteError(error, reply, { operation: 'acknowledge alert', tenantId: ctx.tenantId });
     }
   });
 
@@ -511,27 +399,20 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
   fastify.patch<{
     Params: { alertId: string };
   }>('/alerts/:alertId/resolve', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const { alertId } = request.params;
     const body = request.body as { resolutionNotes?: string };
 
     try {
       const alert = await alertService.resolveAlert(
-        context,
+        ctx,
         alertId,
         body.resolutionNotes
       );
 
-      return reply.status(200).send({
-        success: true,
-        data: alert
-      });
+      return sendSuccess(reply, alert);
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId, alertId }, 'Failed to resolve alert');
-      return reply.status(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to resolve alert'
-      });
+      return handleRouteError(error, reply, { operation: 'resolve alert', tenantId: ctx.tenantId });
     }
   });
 
@@ -540,7 +421,7 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
    * Bulk acknowledge alerts
    */
   fastify.post('/alerts/bulk-acknowledge', async (request: FastifyRequest, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const body = request.body as { alertIds?: string[]; notes?: string };
 
     try {
@@ -552,7 +433,7 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
       }
 
       const count = await alertService.bulkAcknowledge(
-        context,
+        ctx,
         body.alertIds,
         body.notes
       );
@@ -562,11 +443,7 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
         message: `Acknowledged ${count} alerts`
       });
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to bulk acknowledge');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to bulk acknowledge alerts'
-      });
+      return handleRouteError(error, reply, { operation: 'bulk acknowledge alerts', tenantId: ctx.tenantId });
     }
   });
 
@@ -575,7 +452,7 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
    * Bulk resolve alerts
    */
   fastify.post('/alerts/bulk-resolve', async (request: FastifyRequest, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
     const body = request.body as { alertIds?: string[]; resolutionNotes?: string };
 
     try {
@@ -587,7 +464,7 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
       }
 
       const count = await alertService.bulkResolve(
-        context,
+        ctx,
         body.alertIds,
         body.resolutionNotes
       );
@@ -597,11 +474,7 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
         message: `Resolved ${count} alerts`
       });
     } catch (error) {
-      logger.error({ err: error, tenantId: context.tenantId }, 'Failed to bulk resolve');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to bulk resolve alerts'
-      });
+      return handleRouteError(error, reply, { operation: 'bulk resolve alerts', tenantId: ctx.tenantId });
     }
   });
 
@@ -617,16 +490,9 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
     try {
       const status = complianceScheduler.getStatus();
 
-      return reply.status(200).send({
-        success: true,
-        data: status
-      });
+      return sendSuccess(reply, status);
     } catch (error) {
-      logger.error({ err: error }, 'Failed to get scheduler status');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to get scheduler status'
-      });
+      return handleRouteError(error, reply, { operation: 'get scheduler status' });
     }
   });
 
@@ -642,16 +508,9 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
     try {
       const result = await complianceScheduler.triggerJob(jobId);
 
-      return reply.status(200).send({
-        success: true,
-        data: result
-      });
+      return sendSuccess(reply, result);
     } catch (error) {
-      logger.error({ err: error, jobId }, 'Failed to trigger job');
-      return reply.status(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to trigger job'
-      });
+      return handleRouteError(error, reply, { operation: 'trigger job' });
     }
   });
 
@@ -663,16 +522,9 @@ export async function monitoringRoutes(fastify: FastifyInstance): Promise<void> 
     try {
       const results = await complianceScheduler.runAllChecks();
 
-      return reply.status(200).send({
-        success: true,
-        data: results
-      });
+      return sendSuccess(reply, results);
     } catch (error) {
-      logger.error({ err: error }, 'Failed to run all checks');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to run all checks'
-      });
+      return handleRouteError(error, reply, { operation: 'run all checks' });
     }
   });
 }

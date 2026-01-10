@@ -20,6 +20,10 @@ import {
   assessmentRoutes,
   evidenceRoutes,
   monitoringRoutes,
+  visualizationRoutes,
+  analysisRoutes,
+  learningRoutes,
+  qualitativeRoutes,
 } from './api/routes/index.js';
 import { complianceScheduler } from './jobs/compliance-scheduler.js';
 
@@ -81,6 +85,10 @@ async function buildServer(): Promise<FastifyInstance> {
   await server.register(assessmentRoutes, { prefix: '/api/v1/compliance' });
   await server.register(evidenceRoutes, { prefix: '/api/v1/compliance' });
   await server.register(monitoringRoutes, { prefix: '/api/v1/compliance' });
+  await server.register(visualizationRoutes, { prefix: '/api/v1/compliance/visualization' });
+  await server.register(analysisRoutes, { prefix: '/api/v1/compliance/analysis' });
+  await server.register(learningRoutes, { prefix: '/api/v1/compliance/learning' });
+  await server.register(qualitativeRoutes, { prefix: '/api/v1/compliance' });
 
   // Root endpoint
   server.get('/', async (_request, reply) => {

@@ -1,111 +1,175 @@
 /**
- * Learning System API Routes
+ * Learning System API Routes (Fastify)
  *
  * Endpoints for regulatory monitoring, framework discovery,
  * control generation, and auto-assessment scheduling.
  */
 
-import { Router, Request, Response, NextFunction } from 'express';
-import { Pool } from 'pg';
+import { FastifyInstance, FastifyReply } from 'fastify';
+import { getPool } from '../../database/client.js';
+import { RegulatoryMonitorService } from '../../services/regulatory-monitor-service.js';
+import { FrameworkDiscovererService } from '../../services/framework-discoverer-service.js';
+import { ControlGeneratorService } from '../../services/control-generator-service.js';
+import { AutoAssessmentService } from '../../services/auto-assessment-service.js';
+import {
+  getContext,
+  handleRouteError,
+  sendSuccess,
+  sendCreated,
+  sendNotFound,
+} from '../middleware/index.js';
 
-import { RegulatoryMonitorService } from '../../services/regulatory-monitor-service';
-import { FrameworkDiscovererService } from '../../services/framework-discoverer-service';
-import { ControlGeneratorService } from '../../services/control-generator-service';
-import { AutoAssessmentService } from '../../services/auto-assessment-service';
+// Lazy singleton services
+let _regulatoryMonitorService: RegulatoryMonitorService | null = null;
+let _frameworkDiscovererService: FrameworkDiscovererService | null = null;
+let _controlGeneratorService: ControlGeneratorService | null = null;
+let _autoAssessmentService: AutoAssessmentService | null = null;
+
+function getRegulatoryMonitorService(): RegulatoryMonitorService {
+  if (!_regulatoryMonitorService) {
+    _regulatoryMonitorService = new RegulatoryMonitorService(getPool());
+  }
+  return _regulatoryMonitorService;
+}
+
+function getFrameworkDiscovererService(): FrameworkDiscovererService {
+  if (!_frameworkDiscovererService) {
+    _frameworkDiscovererService = new FrameworkDiscovererService(getPool());
+  }
+  return _frameworkDiscovererService;
+}
+
+function getControlGeneratorService(): ControlGeneratorService {
+  if (!_controlGeneratorService) {
+    _controlGeneratorService = new ControlGeneratorService(getPool());
+  }
+  return _controlGeneratorService;
+}
+
+function getAutoAssessmentService(): AutoAssessmentService {
+  if (!_autoAssessmentService) {
+    _autoAssessmentService = new AutoAssessmentService(getPool());
+  }
+  return _autoAssessmentService;
+}
 
 // ============================================================================
-// Route Factory
+// Route Registration
 // ============================================================================
 
-export function createLearningRoutes(pool: Pool): Router {
-  const router = Router();
-
-  const regulatoryMonitorService = new RegulatoryMonitorService(pool);
-  const frameworkDiscovererService = new FrameworkDiscovererService(pool);
-  const controlGeneratorService = new ControlGeneratorService(pool);
-  const autoAssessmentService = new AutoAssessmentService(pool);
-
+export async function learningRoutes(fastify: FastifyInstance): Promise<void> {
   // ==========================================================================
   // Regulatory Sources
   // ==========================================================================
 
   /**
    * List regulatory sources
-   * GET /api/v1/compliance/learning/sources
+   * GET /sources
    */
-  router.get('/sources', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { isActive, jurisdiction, category } = req.query;
+  fastify.get<{
+    Querystring: { isActive?: string; jurisdiction?: string; category?: string };
+  }>('/sources', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { isActive, jurisdiction, category } = request.query;
 
-      const result = await regulatoryMonitorService.listSources({
+    try {
+      const result = await getRegulatoryMonitorService().listSources({
         isActive: isActive !== undefined ? isActive === 'true' : undefined,
-        jurisdiction: jurisdiction as string,
-        category: category as string
+        jurisdiction,
+        category
       });
 
-      res.json(result);
+      return sendSuccess(reply, result);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'list regulatory sources', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Add a regulatory source
-   * POST /api/v1/compliance/learning/sources
+   * POST /sources
    */
-  router.post('/sources', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: {
+      name?: string;
+      sourceType?: string;
+      url?: string;
+      jurisdiction?: string;
+      category?: string;
+      relatedFrameworks?: string[];
+      checkFrequency?: string;
+      contentSelectors?: Record<string, unknown>;
+      changeDetectionMethod?: string;
+      isActive?: boolean;
+      status?: string;
+      metadata?: Record<string, unknown>;
+    };
+  }>('/sources', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const {
+      name, sourceType, url, jurisdiction, category, relatedFrameworks,
+      checkFrequency, contentSelectors, changeDetectionMethod, isActive, status, metadata
+    } = request.body || {};
+
+    if (!name || !sourceType || !url) {
+      return reply.status(400).send({
+        success: false,
+        error: 'name, sourceType, and url are required'
+      });
+    }
+
     try {
-      const { name, sourceType, url, jurisdiction, category, relatedFrameworks, checkFrequency, contentSelectors, changeDetectionMethod, isActive, status, metadata } = req.body;
-
-      if (!name || !sourceType || !url) {
-        res.status(400).json({ error: 'name, sourceType, and url are required' });
-        return;
-      }
-
-      const source = await regulatoryMonitorService.addSource({
+      const source = await getRegulatoryMonitorService().addSource({
         name,
-        sourceType,
+        sourceType: sourceType as any,
         url,
-        jurisdiction,
-        category,
-        relatedFrameworks,
-        checkFrequency: checkFrequency || 'daily',
-        contentSelectors,
-        changeDetectionMethod,
+        jurisdiction: jurisdiction as any,
+        category: category as any,
+        relatedFrameworks: relatedFrameworks as any,
+        checkFrequency: (checkFrequency || 'daily') as any,
+        contentSelectors: contentSelectors as any,
+        changeDetectionMethod: changeDetectionMethod as any,
         isActive: isActive !== false,
-        status: status || 'active',
-        metadata
+        status: (status || 'active') as any,
+        metadata: metadata as any
       });
 
-      res.status(201).json(source);
+      return sendCreated(reply, source);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'add regulatory source', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Force check a source for updates
-   * POST /api/v1/compliance/learning/sources/:id/check
+   * POST /sources/:id/check
    */
-  router.post('/sources/:id/check', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Params: { id: string };
+  }>('/sources/:id/check', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+
     try {
-      const updates = await regulatoryMonitorService.checkForUpdates(req.params.id);
-      res.json({ updates, count: updates.length });
+      const updates = await getRegulatoryMonitorService().checkForUpdates(id);
+      return sendSuccess(reply, { updates, count: updates.length });
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'check source for updates', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Run scheduled checks for all due sources
-   * POST /api/v1/compliance/learning/sources/run-scheduled
+   * POST /sources/run-scheduled
    */
-  router.post('/sources/run-scheduled', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post('/sources/run-scheduled', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+
     try {
-      await regulatoryMonitorService.runScheduledChecks();
-      res.json({ success: true, message: 'Scheduled checks initiated' });
+      await getRegulatoryMonitorService().runScheduledChecks();
+      return sendSuccess(reply, { message: 'Scheduled checks initiated' });
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'run scheduled checks', tenantId: ctx.tenantId });
     }
   });
 
@@ -115,71 +179,92 @@ export function createLearningRoutes(pool: Pool): Router {
 
   /**
    * List regulatory updates
-   * GET /api/v1/compliance/learning/updates
+   * GET /updates
    */
-  router.get('/updates', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { sourceId, frameworkId, status, updateType, impactLevel } = req.query;
+  fastify.get<{
+    Querystring: {
+      sourceId?: string;
+      frameworkId?: string;
+      status?: string;
+      updateType?: string;
+      impactLevel?: string;
+    };
+  }>('/updates', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { sourceId, frameworkId, status, updateType, impactLevel } = request.query;
 
-      const result = await regulatoryMonitorService.listUpdates({
-        sourceId: sourceId as string,
-        frameworkId: frameworkId as string,
+    try {
+      const result = await getRegulatoryMonitorService().listUpdates({
+        sourceId,
+        frameworkId,
         status: status as any,
         updateType: updateType as any,
         impactLevel: impactLevel as any
       });
 
-      res.json(result);
+      return sendSuccess(reply, result);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'list regulatory updates', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Get update details
-   * GET /api/v1/compliance/learning/updates/:id
+   * GET /updates/:id
    */
-  router.get('/updates/:id', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Params: { id: string };
+  }>('/updates/:id', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+
     try {
-      const update = await regulatoryMonitorService.getUpdate(req.params.id);
+      const update = await getRegulatoryMonitorService().getUpdate(id);
 
       if (!update) {
-        res.status(404).json({ error: 'Update not found' });
-        return;
+        return sendNotFound(reply, 'Update not found');
       }
 
-      res.json(update);
+      return sendSuccess(reply, update);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'get update', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Implement an update (generate controls)
-   * POST /api/v1/compliance/learning/updates/:id/implement
+   * POST /updates/:id/implement
    */
-  router.post('/updates/:id/implement', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { implementedBy } = req.body;
+  fastify.post<{
+    Params: { id: string };
+    Body: { implementedBy?: string };
+  }>('/updates/:id/implement', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { implementedBy } = request.body || {};
 
-      // Generate controls from the update
-      const generationResult = await controlGeneratorService.generateControlsFromUpdate(req.params.id);
+    try {
+      const generationResult = await getControlGeneratorService().generateControlsFromUpdate(id);
 
       if (generationResult.status === 'failed') {
-        res.status(500).json({ error: 'Failed to generate controls', details: generationResult.errors });
-        return;
+        return reply.status(500).send({
+          success: false,
+          error: 'Failed to generate controls',
+          details: generationResult.errors
+        });
       }
 
-      // Mark the update as implemented
-      await regulatoryMonitorService.markImplemented(req.params.id, implementedBy);
+      // Mark update as implemented with the generated control IDs
+      const controlIds = generationResult.controls?.map((c: any) => c.id) || [];
+      await getRegulatoryMonitorService().markImplemented(id, controlIds);
 
-      res.json({
-        success: true,
+      return sendSuccess(reply, {
         controlsGenerated: generationResult.controlsGenerated,
-        controls: generationResult.controls
+        controls: generationResult.controls,
+        implementedBy
       });
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'implement update', tenantId: ctx.tenantId });
     }
   });
 
@@ -189,175 +274,220 @@ export function createLearningRoutes(pool: Pool): Router {
 
   /**
    * Get entity profile
-   * GET /api/v1/compliance/learning/profile
+   * GET /profile
    */
-  router.get('/profile', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: { tenantId?: string };
+  }>('/profile', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId } = request.query;
+
+    if (!tenantId) {
+      return reply.status(400).send({
+        success: false,
+        error: 'tenantId query parameter is required'
+      });
+    }
+
     try {
-      const { tenantId } = req.query;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
-      }
-
-      const profile = await frameworkDiscovererService.getEntityProfile(tenantId as string);
+      const profile = await getFrameworkDiscovererService().getEntityProfile(tenantId);
 
       if (!profile) {
-        res.status(404).json({ error: 'Profile not found' });
-        return;
+        return sendNotFound(reply, 'Profile not found');
       }
 
-      res.json(profile);
+      return sendSuccess(reply, profile);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'get entity profile', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Create or update entity profile
-   * PUT /api/v1/compliance/learning/profile
+   * PUT /profile
    */
-  router.put('/profile', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.put<{
+    Body: {
+      tenantId?: string;
+      entityName?: string;
+      industry?: string;
+      subIndustry?: string;
+      jurisdictions?: string[];
+      entitySize?: string;
+      isPubliclyTraded?: boolean;
+      processesPersonalData?: boolean;
+      usesAiSystems?: boolean;
+      isCriticalInfrastructure?: boolean;
+      dataCategories?: string[];
+      annualRevenue?: number;
+      employeeCount?: number;
+      metadata?: Record<string, unknown>;
+    };
+  }>('/profile', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const {
+      tenantId, entityName, industry, subIndustry, jurisdictions,
+      entitySize, isPubliclyTraded, processesPersonalData, usesAiSystems,
+      isCriticalInfrastructure, dataCategories, annualRevenue, employeeCount, metadata
+    } = request.body || {};
+
+    if (!tenantId || !entityName || !industry || !jurisdictions || !entitySize) {
+      return reply.status(400).send({
+        success: false,
+        error: 'tenantId, entityName, industry, jurisdictions, and entitySize are required'
+      });
+    }
+
     try {
-      const {
-        tenantId, entityName, industry, subIndustry, jurisdictions,
-        entitySize, isPubliclyTraded, processesPersonalData, usesAiSystems,
-        isCriticalInfrastructure, dataCategories, annualRevenue, employeeCount, metadata
-      } = req.body;
-
-      if (!tenantId || !entityName || !industry || !jurisdictions || !entitySize) {
-        res.status(400).json({
-          error: 'tenantId, entityName, industry, jurisdictions, and entitySize are required'
-        });
-        return;
-      }
-
-      // Check if profile exists
-      const existing = await frameworkDiscovererService.getEntityProfile(tenantId);
+      const existing = await getFrameworkDiscovererService().getEntityProfile(tenantId);
 
       let profile;
       if (existing) {
-        profile = await frameworkDiscovererService.updateEntityProfile(tenantId, {
-          entityName, industry, subIndustry, jurisdictions, entitySize,
+        profile = await getFrameworkDiscovererService().updateEntityProfile(tenantId, {
+          entityName, industry: industry as any, subIndustry, jurisdictions: jurisdictions as any, entitySize: entitySize as any,
           isPubliclyTraded, processesPersonalData, usesAiSystems,
-          isCriticalInfrastructure, dataCategories, annualRevenue, employeeCount, metadata
-        });
+          isCriticalInfrastructure, dataCategories: dataCategories as any, annualRevenue, employeeCount, metadata
+        } as any);
       } else {
-        profile = await frameworkDiscovererService.createEntityProfile({
-          tenantId, entityName, industry, subIndustry, jurisdictions,
-          entitySize, isPubliclyTraded, processesPersonalData, usesAiSystems,
-          isCriticalInfrastructure, dataCategories, annualRevenue, employeeCount, metadata
-        });
+        profile = await getFrameworkDiscovererService().createEntityProfile({
+          tenantId, entityName, industry: industry as any, subIndustry, jurisdictions: jurisdictions as any,
+          entitySize: entitySize as any, isPubliclyTraded, processesPersonalData, usesAiSystems,
+          isCriticalInfrastructure, dataCategories: dataCategories as any, annualRevenue, employeeCount, metadata
+        } as any);
       }
 
-      res.json(profile);
+      return sendSuccess(reply, profile);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'create/update entity profile', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Discover applicable frameworks for entity
-   * POST /api/v1/compliance/learning/discover
+   * POST /discover
    */
-  router.post('/discover', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: { tenantId?: string };
+  }>('/discover', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId } = request.body || {};
+
+    if (!tenantId) {
+      return reply.status(400).send({
+        success: false,
+        error: 'tenantId is required'
+      });
+    }
+
     try {
-      const { tenantId } = req.body;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId is required' });
-        return;
-      }
-
-      const suggestions = await frameworkDiscovererService.discoverApplicableFrameworks(tenantId);
-      res.json({ suggestions, count: suggestions.length });
+      const suggestions = await getFrameworkDiscovererService().discoverApplicableFrameworks(tenantId);
+      return sendSuccess(reply, { suggestions, count: suggestions.length });
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'discover frameworks', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Get framework suggestions
-   * GET /api/v1/compliance/learning/suggestions
+   * GET /suggestions
    */
-  router.get('/suggestions', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: { tenantId?: string };
+  }>('/suggestions', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId } = request.query;
+
+    if (!tenantId) {
+      return reply.status(400).send({
+        success: false,
+        error: 'tenantId query parameter is required'
+      });
+    }
+
     try {
-      const { tenantId } = req.query;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
-      }
-
-      // Get suggestions (runs discovery if not cached)
-      const suggestions = await frameworkDiscovererService.discoverApplicableFrameworks(tenantId as string);
-      res.json(suggestions);
+      const suggestions = await getFrameworkDiscovererService().discoverApplicableFrameworks(tenantId);
+      return sendSuccess(reply, suggestions);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'get framework suggestions', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Accept a framework suggestion
-   * POST /api/v1/compliance/learning/suggestions/:id/accept
+   * POST /suggestions/:id/accept
    */
-  router.post('/suggestions/:id/accept', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Params: { id: string };
+    Body: { tenantId?: string };
+  }>('/suggestions/:id/accept', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId } = request.body || {};
+
+    if (!tenantId) {
+      return reply.status(400).send({
+        success: false,
+        error: 'tenantId is required'
+      });
+    }
+
     try {
-      const { tenantId } = req.body;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId is required' });
-        return;
-      }
-
-      const result = await frameworkDiscovererService.acceptSuggestion(tenantId, req.params.id);
-      res.json(result);
+      const result = await getFrameworkDiscovererService().acceptSuggestion(tenantId, id);
+      return sendSuccess(reply, result);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'accept suggestion', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Reject a framework suggestion
-   * POST /api/v1/compliance/learning/suggestions/:id/reject
+   * POST /suggestions/:id/reject
    */
-  router.post('/suggestions/:id/reject', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Params: { id: string };
+    Body: { tenantId?: string; reason?: string };
+  }>('/suggestions/:id/reject', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId, reason } = request.body || {};
+
+    if (!tenantId) {
+      return reply.status(400).send({
+        success: false,
+        error: 'tenantId is required'
+      });
+    }
+
     try {
-      const { tenantId, reason } = req.body;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId is required' });
-        return;
-      }
-
-      const result = await frameworkDiscovererService.rejectSuggestion(tenantId, req.params.id, reason);
-      res.json(result);
+      const result = await getFrameworkDiscovererService().rejectSuggestion(tenantId, id, reason);
+      return sendSuccess(reply, result);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'reject suggestion', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Analyze framework relevance for entity
-   * GET /api/v1/compliance/learning/analyze-relevance
+   * GET /analyze-relevance
    */
-  router.get('/analyze-relevance', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: { tenantId?: string; frameworkId?: string };
+  }>('/analyze-relevance', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, frameworkId } = request.query;
+
+    if (!tenantId || !frameworkId) {
+      return reply.status(400).send({
+        success: false,
+        error: 'tenantId and frameworkId query parameters are required'
+      });
+    }
+
     try {
-      const { tenantId, frameworkId } = req.query;
-
-      if (!tenantId || !frameworkId) {
-        res.status(400).json({ error: 'tenantId and frameworkId query parameters are required' });
-        return;
-      }
-
-      const analysis = await frameworkDiscovererService.analyzeFrameworkRelevance(
-        tenantId as string,
-        frameworkId as string
-      );
-
-      res.json(analysis);
+      const analysis = await getFrameworkDiscovererService().analyzeFrameworkRelevance(tenantId, frameworkId);
+      return sendSuccess(reply, analysis);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'analyze framework relevance', tenantId: ctx.tenantId });
     }
   });
 
@@ -367,181 +497,230 @@ export function createLearningRoutes(pool: Pool): Router {
 
   /**
    * Generate controls from URL
-   * POST /api/v1/compliance/learning/generate-from-url
+   * POST /generate-from-url
    */
-  router.post('/generate-from-url', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: {
+      documentUrl?: string;
+      frameworkId?: string;
+      frameworkName?: string;
+      context?: Record<string, unknown>;
+    };
+  }>('/generate-from-url', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { documentUrl, frameworkId, frameworkName, context } = request.body || {};
+
+    if (!documentUrl || !frameworkId || !frameworkName) {
+      return reply.status(400).send({
+        success: false,
+        error: 'documentUrl, frameworkId, and frameworkName are required'
+      });
+    }
+
     try {
-      const { documentUrl, frameworkId, frameworkName, context } = req.body;
-
-      if (!documentUrl || !frameworkId || !frameworkName) {
-        res.status(400).json({ error: 'documentUrl, frameworkId, and frameworkName are required' });
-        return;
-      }
-
-      const result = await controlGeneratorService.generateControlsFromUrl(
+      const result = await getControlGeneratorService().generateControlsFromUrl(
         documentUrl,
         frameworkId,
         frameworkName,
-        context
+        context as any
       );
 
-      res.json(result);
+      return sendSuccess(reply, result);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'generate controls from URL', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Generate controls from text
-   * POST /api/v1/compliance/learning/generate-from-text
+   * POST /generate-from-text
    */
-  router.post('/generate-from-text', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: {
+      documentContent?: string;
+      frameworkId?: string;
+      frameworkName?: string;
+      context?: Record<string, unknown>;
+    };
+  }>('/generate-from-text', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { documentContent, frameworkId, frameworkName, context } = request.body || {};
+
+    if (!documentContent || !frameworkId || !frameworkName) {
+      return reply.status(400).send({
+        success: false,
+        error: 'documentContent, frameworkId, and frameworkName are required'
+      });
+    }
+
     try {
-      const { documentContent, frameworkId, frameworkName, context } = req.body;
-
-      if (!documentContent || !frameworkId || !frameworkName) {
-        res.status(400).json({ error: 'documentContent, frameworkId, and frameworkName are required' });
-        return;
-      }
-
-      const result = await controlGeneratorService.generateControlsFromText(
+      const result = await getControlGeneratorService().generateControlsFromText(
         documentContent,
         frameworkId,
         frameworkName,
-        context
+        context as any
       );
 
-      res.json(result);
+      return sendSuccess(reply, result);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'generate controls from text', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Validate generated controls
-   * POST /api/v1/compliance/learning/validate
+   * POST /validate
    */
-  router.post('/validate', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: { controls?: unknown[] };
+  }>('/validate', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { controls } = request.body || {};
+
+    if (!controls || !Array.isArray(controls)) {
+      return reply.status(400).send({
+        success: false,
+        error: 'controls array is required'
+      });
+    }
+
     try {
-      const { controls } = req.body;
-
-      if (!controls || !Array.isArray(controls)) {
-        res.status(400).json({ error: 'controls array is required' });
-        return;
-      }
-
-      const validation = await controlGeneratorService.validateControls(controls);
-      res.json(validation);
+      const validation = await getControlGeneratorService().validateControls(controls as any);
+      return sendSuccess(reply, validation);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'validate controls', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * List generated controls
-   * GET /api/v1/compliance/learning/generated-controls
+   * GET /generated-controls
    */
-  router.get('/generated-controls', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { frameworkId, status, minConfidence } = req.query;
+  fastify.get<{
+    Querystring: { frameworkId?: string; status?: string; minConfidence?: string };
+  }>('/generated-controls', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { frameworkId, status, minConfidence } = request.query;
 
-      const result = await controlGeneratorService.listGeneratedControls({
-        frameworkId: frameworkId as string,
+    try {
+      const result = await getControlGeneratorService().listGeneratedControls({
+        frameworkId,
         status: status as any,
-        minConfidence: minConfidence ? parseFloat(minConfidence as string) : undefined
+        minConfidence: minConfidence ? parseFloat(minConfidence) : undefined
       });
 
-      res.json(result);
+      return sendSuccess(reply, result);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'list generated controls', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Get controls pending review
-   * GET /api/v1/compliance/learning/pending-review
+   * GET /pending-review
    */
-  router.get('/pending-review', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: { limit?: string };
+  }>('/pending-review', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { limit } = request.query;
+
     try {
-      const { limit } = req.query;
-      const controls = await controlGeneratorService.getPendingReviewControls(
-        limit ? parseInt(limit as string, 10) : undefined
+      const controls = await getControlGeneratorService().getPendingReviewControls(
+        limit ? parseInt(limit, 10) : undefined
       );
-      res.json(controls);
+      return sendSuccess(reply, controls);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'get pending review controls', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Approve a generated control
-   * POST /api/v1/compliance/learning/generated-controls/:id/approve
+   * POST /generated-controls/:id/approve
    */
-  router.post('/generated-controls/:id/approve', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Params: { id: string };
+    Body: { reviewedBy?: string; notes?: string };
+  }>('/generated-controls/:id/approve', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { reviewedBy, notes } = request.body || {};
+
+    if (!reviewedBy) {
+      return reply.status(400).send({
+        success: false,
+        error: 'reviewedBy is required'
+      });
+    }
+
     try {
-      const { reviewedBy, notes } = req.body;
-
-      if (!reviewedBy) {
-        res.status(400).json({ error: 'reviewedBy is required' });
-        return;
-      }
-
-      const control = await controlGeneratorService.approveControl(req.params.id, reviewedBy, notes);
+      const control = await getControlGeneratorService().approveControl(id, reviewedBy, notes);
 
       if (!control) {
-        res.status(404).json({ error: 'Control not found' });
-        return;
+        return sendNotFound(reply, 'Control not found');
       }
 
-      res.json(control);
+      return sendSuccess(reply, control);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'approve control', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Reject a generated control
-   * POST /api/v1/compliance/learning/generated-controls/:id/reject
+   * POST /generated-controls/:id/reject
    */
-  router.post('/generated-controls/:id/reject', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Params: { id: string };
+    Body: { reviewedBy?: string; reason?: string };
+  }>('/generated-controls/:id/reject', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { reviewedBy, reason } = request.body || {};
+
+    if (!reviewedBy || !reason) {
+      return reply.status(400).send({
+        success: false,
+        error: 'reviewedBy and reason are required'
+      });
+    }
+
     try {
-      const { reviewedBy, reason } = req.body;
-
-      if (!reviewedBy || !reason) {
-        res.status(400).json({ error: 'reviewedBy and reason are required' });
-        return;
-      }
-
-      const control = await controlGeneratorService.rejectControl(req.params.id, reviewedBy, reason);
+      const control = await getControlGeneratorService().rejectControl(id, reviewedBy, reason);
 
       if (!control) {
-        res.status(404).json({ error: 'Control not found' });
-        return;
+        return sendNotFound(reply, 'Control not found');
       }
 
-      res.json(control);
+      return sendSuccess(reply, control);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'reject control', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Implement approved controls
-   * POST /api/v1/compliance/learning/implement
+   * POST /implement
    */
-  router.post('/implement', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: { controlIds?: string[]; reviewedBy?: string };
+  }>('/implement', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { controlIds, reviewedBy } = request.body || {};
+
+    if (!controlIds || !Array.isArray(controlIds) || !reviewedBy) {
+      return reply.status(400).send({
+        success: false,
+        error: 'controlIds array and reviewedBy are required'
+      });
+    }
+
     try {
-      const { controlIds, reviewedBy } = req.body;
-
-      if (!controlIds || !Array.isArray(controlIds) || !reviewedBy) {
-        res.status(400).json({ error: 'controlIds array and reviewedBy are required' });
-        return;
-      }
-
-      const result = await controlGeneratorService.implementControls(controlIds, reviewedBy);
-      res.json(result);
+      const result = await getControlGeneratorService().implementControls(controlIds, reviewedBy);
+      return sendSuccess(reply, result);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'implement controls', tenantId: ctx.tenantId });
     }
   });
 
@@ -551,137 +730,174 @@ export function createLearningRoutes(pool: Pool): Router {
 
   /**
    * Create auto-assessment schedule
-   * POST /api/v1/compliance/learning/schedule
+   * POST /schedule
    */
-  router.post('/schedule', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: {
+      tenantId?: string;
+      frameworkId?: string;
+      frequency?: string;
+      config?: Record<string, unknown>;
+      notificationConfig?: Record<string, unknown>;
+    };
+  }>('/schedule', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, frameworkId, frequency, config, notificationConfig } = request.body || {};
+
+    if (!tenantId || !frameworkId || !frequency) {
+      return reply.status(400).send({
+        success: false,
+        error: 'tenantId, frameworkId, and frequency are required'
+      });
+    }
+
     try {
-      const { tenantId, frameworkId, frequency, config, notificationConfig } = req.body;
-
-      if (!tenantId || !frameworkId || !frequency) {
-        res.status(400).json({ error: 'tenantId, frameworkId, and frequency are required' });
-        return;
-      }
-
-      const schedule = await autoAssessmentService.createSchedule(
+      const schedule = await getAutoAssessmentService().createSchedule(
         tenantId,
         frameworkId,
-        frequency,
+        frequency as any,
         config,
-        notificationConfig
+        notificationConfig as any
       );
 
-      res.status(201).json(schedule);
+      return sendCreated(reply, schedule);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'create assessment schedule', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * List scheduled assessments
-   * GET /api/v1/compliance/learning/scheduled
+   * GET /scheduled
    */
-  router.get('/scheduled', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: { tenantId?: string; frameworkId?: string; isActive?: string };
+  }>('/scheduled', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, frameworkId, isActive } = request.query;
+
+    if (!tenantId) {
+      return reply.status(400).send({
+        success: false,
+        error: 'tenantId query parameter is required'
+      });
+    }
+
     try {
-      const { tenantId, frameworkId, isActive } = req.query;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
-      }
-
-      const schedules = await autoAssessmentService.listSchedules(tenantId as string, {
-        frameworkId: frameworkId as string,
+      const schedules = await getAutoAssessmentService().listSchedules(tenantId, {
+        frameworkId,
         isActive: isActive !== undefined ? isActive === 'true' : undefined
       });
 
-      res.json(schedules);
+      return sendSuccess(reply, schedules);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'list scheduled assessments', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Update schedule frequency
-   * PATCH /api/v1/compliance/learning/scheduled/:id/frequency
+   * PATCH /scheduled/:id/frequency
    */
-  router.patch('/scheduled/:id/frequency', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.patch<{
+    Params: { id: string };
+    Body: { frequency?: string };
+  }>('/scheduled/:id/frequency', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { frequency } = request.body || {};
+
+    if (!frequency) {
+      return reply.status(400).send({
+        success: false,
+        error: 'frequency is required'
+      });
+    }
+
     try {
-      const { frequency } = req.body;
-
-      if (!frequency) {
-        res.status(400).json({ error: 'frequency is required' });
-        return;
-      }
-
-      const schedule = await autoAssessmentService.updateScheduleFrequency(req.params.id, frequency);
+      const schedule = await getAutoAssessmentService().updateScheduleFrequency(id, frequency as any);
 
       if (!schedule) {
-        res.status(404).json({ error: 'Schedule not found' });
-        return;
+        return sendNotFound(reply, 'Schedule not found');
       }
 
-      res.json(schedule);
+      return sendSuccess(reply, schedule);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'update schedule frequency', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Enable/disable schedule
-   * PATCH /api/v1/compliance/learning/scheduled/:id/active
+   * PATCH /scheduled/:id/active
    */
-  router.patch('/scheduled/:id/active', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.patch<{
+    Params: { id: string };
+    Body: { isActive?: boolean };
+  }>('/scheduled/:id/active', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { isActive } = request.body || {};
+
+    if (isActive === undefined) {
+      return reply.status(400).send({
+        success: false,
+        error: 'isActive is required'
+      });
+    }
+
     try {
-      const { isActive } = req.body;
-
-      if (isActive === undefined) {
-        res.status(400).json({ error: 'isActive is required' });
-        return;
-      }
-
-      const schedule = await autoAssessmentService.setScheduleActive(req.params.id, isActive);
+      const schedule = await getAutoAssessmentService().setScheduleActive(id, isActive);
 
       if (!schedule) {
-        res.status(404).json({ error: 'Schedule not found' });
-        return;
+        return sendNotFound(reply, 'Schedule not found');
       }
 
-      res.json(schedule);
+      return sendSuccess(reply, schedule);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'update schedule active status', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Run assessment now
-   * POST /api/v1/compliance/learning/run/:frameworkId
+   * POST /run/:frameworkId
    */
-  router.post('/run/:frameworkId', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Params: { frameworkId: string };
+    Body: { tenantId?: string };
+  }>('/run/:frameworkId', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { frameworkId } = request.params;
+    const { tenantId } = request.body || {};
+
+    if (!tenantId) {
+      return reply.status(400).send({
+        success: false,
+        error: 'tenantId is required'
+      });
+    }
+
     try {
-      const { tenantId } = req.body;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId is required' });
-        return;
-      }
-
-      const result = await autoAssessmentService.runAssessment(tenantId, req.params.frameworkId);
-      res.json(result);
+      const result = await getAutoAssessmentService().runAssessment(tenantId, frameworkId);
+      return sendSuccess(reply, result);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'run assessment', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Run all scheduled assessments
-   * POST /api/v1/compliance/learning/run-scheduled-assessments
+   * POST /run-scheduled-assessments
    */
-  router.post('/run-scheduled-assessments', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post('/run-scheduled-assessments', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+
     try {
-      const results = await autoAssessmentService.runScheduledAssessments();
-      res.json({ results, count: results.length });
+      const results = await getAutoAssessmentService().runScheduledAssessments();
+      return sendSuccess(reply, { results, count: results.length });
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'run scheduled assessments', tenantId: ctx.tenantId });
     }
   });
 
@@ -691,82 +907,106 @@ export function createLearningRoutes(pool: Pool): Router {
 
   /**
    * Record feedback on an assessment
-   * POST /api/v1/compliance/learning/feedback
+   * POST /feedback
    */
-  router.post('/feedback', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: {
+      tenantId?: string;
+      assessmentId?: string;
+      controlId?: string;
+      eventType?: string;
+      originalRating?: number;
+      feedback?: string;
+      correctedRating?: number;
+      improvementSuggestion?: string;
+    };
+  }>('/feedback', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const {
+      tenantId, assessmentId, controlId, eventType, originalRating, feedback,
+      correctedRating, improvementSuggestion
+    } = request.body || {};
+
+    if (!tenantId || !assessmentId || !controlId || !eventType || originalRating === undefined || !feedback) {
+      return reply.status(400).send({
+        success: false,
+        error: 'tenantId, assessmentId, controlId, eventType, originalRating, and feedback are required'
+      });
+    }
+
     try {
-      const { tenantId, assessmentId, controlId, eventType, originalRating, feedback, correctedRating, improvementSuggestion } = req.body;
-
-      if (!tenantId || !assessmentId || !controlId || !eventType || !originalRating || !feedback) {
-        res.status(400).json({
-          error: 'tenantId, assessmentId, controlId, eventType, originalRating, and feedback are required'
-        });
-        return;
-      }
-
-      const result = await autoAssessmentService.recordFeedback(
+      const result = await getAutoAssessmentService().recordFeedback(
         tenantId,
         assessmentId,
         controlId,
-        eventType,
-        originalRating,
+        eventType as any,
+        originalRating as any,
         feedback,
-        correctedRating,
+        correctedRating as any,
         improvementSuggestion
       );
 
-      res.status(201).json(result);
+      return sendCreated(reply, result);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'record feedback', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Process pending feedback
-   * POST /api/v1/compliance/learning/process-feedback
+   * POST /process-feedback
    */
-  router.post('/process-feedback', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post('/process-feedback', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+
     try {
-      const result = await autoAssessmentService.processFeedback();
-      res.json(result);
+      const result = await getAutoAssessmentService().processFeedback();
+      return sendSuccess(reply, result);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'process feedback', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Learn from assessment
-   * POST /api/v1/compliance/learning/learn-from-assessment
+   * POST /learn-from-assessment
    */
-  router.post('/learn-from-assessment', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: { assessmentId?: string };
+  }>('/learn-from-assessment', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { assessmentId } = request.body || {};
+
+    if (!assessmentId) {
+      return reply.status(400).send({
+        success: false,
+        error: 'assessmentId is required'
+      });
+    }
+
     try {
-      const { assessmentId } = req.body;
-
-      if (!assessmentId) {
-        res.status(400).json({ error: 'assessmentId is required' });
-        return;
-      }
-
-      const result = await autoAssessmentService.learnFromAssessment(assessmentId);
-      res.json(result);
+      const result = await getAutoAssessmentService().learnFromAssessment(assessmentId);
+      return sendSuccess(reply, result);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'learn from assessment', tenantId: ctx.tenantId });
     }
   });
 
   /**
    * Get learning metrics
-   * GET /api/v1/compliance/learning/metrics
+   * GET /metrics
    */
-  router.get('/metrics', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: { tenantId?: string };
+  }>('/metrics', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId } = request.query;
+
     try {
-      const { tenantId } = req.query;
-      const metrics = await autoAssessmentService.getLearningMetrics(tenantId as string);
-      res.json(metrics);
+      const metrics = await getAutoAssessmentService().getLearningMetrics(tenantId);
+      return sendSuccess(reply, metrics);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'get learning metrics', tenantId: ctx.tenantId });
     }
   });
-
-  return router;
 }

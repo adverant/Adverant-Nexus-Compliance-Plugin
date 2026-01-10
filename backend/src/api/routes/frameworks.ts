@@ -4,21 +4,17 @@
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { query, snakeToCamel, type DatabaseRow } from '../../database/client.js';
+import { query, type DatabaseRow } from '../../database/client.js';
 import { createLogger } from '../../utils/logger.js';
+import {
+  getContext,
+  handleRouteError,
+  sendSuccess,
+  sendNotFound,
+} from '../middleware/index.js';
 import type { ComplianceFramework, ComplianceControl, ControlMapping } from '../../types/index.js';
 
 const logger = createLogger('framework-routes');
-
-function getContext(request: FastifyRequest) {
-  const tenantId = (request.headers['x-tenant-id'] as string) ||
-    (request.headers['x-user-id'] as string) ||
-    'default';
-  const userId = (request.headers['x-user-id'] as string) || 'system';
-  const requestId = (request.headers['x-request-id'] as string) || request.id;
-
-  return { tenantId, userId, requestId };
-}
 
 const listQuerySchema = z.object({
   category: z.string().optional(),
@@ -99,7 +95,7 @@ export async function frameworkRoutes(fastify: FastifyInstance): Promise<void> {
       offset?: string;
     };
   }>('/frameworks', async (request, reply: FastifyReply) => {
-    const context = getContext(request);
+    const ctx = getContext(request);
 
     try {
       const params = listQuerySchema.parse(request.query);
@@ -144,7 +140,7 @@ export async function frameworkRoutes(fastify: FastifyInstance): Promise<void> {
 
       const frameworks = result.rows.map(mapRowToFramework);
 
-      return reply.status(200).send({
+      reply.status(200).send({
         success: true,
         data: frameworks,
         pagination: {
@@ -155,19 +151,7 @@ export async function frameworkRoutes(fastify: FastifyInstance): Promise<void> {
         },
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors,
-        });
-      }
-
-      logger.error({ err: error }, 'Failed to list frameworks');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to retrieve frameworks',
-      });
+      handleRouteError(error, reply, { operation: 'list frameworks', tenantId: ctx.tenantId });
     }
   });
 
@@ -178,6 +162,7 @@ export async function frameworkRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{
     Params: { frameworkId: string };
   }>('/frameworks/:frameworkId', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
     const { frameworkId } = request.params;
 
     try {
@@ -187,10 +172,7 @@ export async function frameworkRoutes(fastify: FastifyInstance): Promise<void> {
       );
 
       if (result.rows.length === 0) {
-        return reply.status(404).send({
-          success: false,
-          error: `Framework not found: ${frameworkId}`,
-        });
+        return sendNotFound(reply, 'Framework', frameworkId);
       }
 
       const framework = mapRowToFramework(result.rows[0]!);
@@ -210,19 +192,9 @@ export async function frameworkRoutes(fastify: FastifyInstance): Promise<void> {
         count: parseInt(row.count, 10),
       }));
 
-      return reply.status(200).send({
-        success: true,
-        data: {
-          ...framework,
-          domainBreakdown,
-        },
-      });
+      sendSuccess(reply, { ...framework, domainBreakdown });
     } catch (error) {
-      logger.error({ err: error, frameworkId }, 'Failed to get framework');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to retrieve framework',
-      });
+      handleRouteError(error, reply, { operation: 'get framework', frameworkId, tenantId: ctx.tenantId });
     }
   });
 
@@ -240,6 +212,7 @@ export async function frameworkRoutes(fastify: FastifyInstance): Promise<void> {
       offset?: string;
     };
   }>('/frameworks/:frameworkId/controls', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
     const { frameworkId } = request.params;
 
     try {
@@ -283,7 +256,7 @@ export async function frameworkRoutes(fastify: FastifyInstance): Promise<void> {
 
       const controls = result.rows.map(mapRowToControl);
 
-      return reply.status(200).send({
+      reply.status(200).send({
         success: true,
         data: controls,
         pagination: {
@@ -294,19 +267,7 @@ export async function frameworkRoutes(fastify: FastifyInstance): Promise<void> {
         },
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: error.errors,
-        });
-      }
-
-      logger.error({ err: error, frameworkId }, 'Failed to list controls');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to retrieve controls',
-      });
+      handleRouteError(error, reply, { operation: 'list controls', frameworkId, tenantId: ctx.tenantId });
     }
   });
 
@@ -317,6 +278,7 @@ export async function frameworkRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{
     Params: { controlId: string };
   }>('/controls/:controlId', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
     const { controlId } = request.params;
 
     try {
@@ -326,10 +288,7 @@ export async function frameworkRoutes(fastify: FastifyInstance): Promise<void> {
       );
 
       if (result.rows.length === 0) {
-        return reply.status(404).send({
-          success: false,
-          error: `Control not found: ${controlId}`,
-        });
+        return sendNotFound(reply, 'Control', controlId);
       }
 
       const control = mapRowToControl(result.rows[0]!);
@@ -356,19 +315,9 @@ export async function frameworkRoutes(fastify: FastifyInstance): Promise<void> {
         notes: row['notes'] as string | null,
       }));
 
-      return reply.status(200).send({
-        success: true,
-        data: {
-          ...control,
-          crossFrameworkMappings: mappings,
-        },
-      });
+      sendSuccess(reply, { ...control, crossFrameworkMappings: mappings });
     } catch (error) {
-      logger.error({ err: error, controlId }, 'Failed to get control');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to retrieve control',
-      });
+      handleRouteError(error, reply, { operation: 'get control', controlId, tenantId: ctx.tenantId });
     }
   });
 
@@ -380,8 +329,8 @@ export async function frameworkRoutes(fastify: FastifyInstance): Promise<void> {
     Params: { controlId: string };
     Querystring: { context?: string };
   }>('/controls/:controlId/guidance', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
     const { controlId } = request.params;
-    const { context: orgContext } = request.query;
 
     try {
       const result = await query<DatabaseRow>(
@@ -393,10 +342,7 @@ export async function frameworkRoutes(fastify: FastifyInstance): Promise<void> {
       );
 
       if (result.rows.length === 0) {
-        return reply.status(404).send({
-          success: false,
-          error: `Control not found: ${controlId}`,
-        });
+        return sendNotFound(reply, 'Control', controlId);
       }
 
       const control = mapRowToControl(result.rows[0]!);
@@ -462,16 +408,9 @@ export async function frameworkRoutes(fastify: FastifyInstance): Promise<void> {
         generatedAt: new Date().toISOString(),
       };
 
-      return reply.status(200).send({
-        success: true,
-        data: guidance,
-      });
+      sendSuccess(reply, guidance);
     } catch (error) {
-      logger.error({ err: error, controlId }, 'Failed to get control guidance');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to retrieve control guidance',
-      });
+      handleRouteError(error, reply, { operation: 'get control guidance', controlId, tenantId: ctx.tenantId });
     }
   });
 }

@@ -1,297 +1,485 @@
 /**
- * Qualitative Assessment API Routes
+ * Qualitative Assessment API Routes (Fastify)
  *
  * Endpoints for managing trustworthiness assessments, stakeholders,
  * scenarios, ethical tensions, and Z-Inspection reports.
  */
 
-import { Router, Request, Response, NextFunction } from 'express';
-import { Pool } from 'pg';
+import { FastifyInstance, FastifyReply } from 'fastify';
+import { getPool } from '../../database/client.js';
+import { StakeholderService } from '../../services/stakeholder-service.js';
+import { ScenarioService } from '../../services/scenario-service.js';
+import { TensionService } from '../../services/tension-service.js';
+import { QualitativeAssessmentService } from '../../services/qualitative-assessment-service.js';
+import { ZInspectionService } from '../../services/z-inspection-service.js';
+import {
+  getContext,
+  handleRouteError,
+  sendSuccess,
+  sendCreated,
+  sendNotFound,
+  sendError,
+} from '../middleware/index.js';
 
-import { StakeholderService } from '../../services/stakeholder-service';
-import { ScenarioService } from '../../services/scenario-service';
-import { TensionService } from '../../services/tension-service';
-import { QualitativeAssessmentService } from '../../services/qualitative-assessment-service';
-import { ZInspectionService } from '../../services/z-inspection-service';
+// Lazy singleton services
+let _stakeholderService: StakeholderService | null = null;
+let _scenarioService: ScenarioService | null = null;
+let _tensionService: TensionService | null = null;
+let _assessmentService: QualitativeAssessmentService | null = null;
+let _zInspectionService: ZInspectionService | null = null;
+
+function getStakeholderService(): StakeholderService {
+  if (!_stakeholderService) {
+    _stakeholderService = new StakeholderService(getPool());
+  }
+  return _stakeholderService;
+}
+
+function getScenarioService(): ScenarioService {
+  if (!_scenarioService) {
+    _scenarioService = new ScenarioService(getPool());
+  }
+  return _scenarioService;
+}
+
+function getTensionService(): TensionService {
+  if (!_tensionService) {
+    _tensionService = new TensionService(getPool());
+  }
+  return _tensionService;
+}
+
+function getAssessmentService(): QualitativeAssessmentService {
+  if (!_assessmentService) {
+    _assessmentService = new QualitativeAssessmentService(getPool());
+  }
+  return _assessmentService;
+}
+
+function getZInspectionService(): ZInspectionService {
+  if (!_zInspectionService) {
+    _zInspectionService = new ZInspectionService(getPool());
+  }
+  return _zInspectionService;
+}
 
 // ============================================================================
-// Route Factory
+// Route Registration
 // ============================================================================
 
-export function createQualitativeRoutes(pool: Pool): Router {
-  const router = Router();
-
-  const stakeholderService = new StakeholderService(pool);
-  const scenarioService = new ScenarioService(pool);
-  const tensionService = new TensionService(pool);
-  const assessmentService = new QualitativeAssessmentService(pool);
-  const zInspectionService = new ZInspectionService(pool);
-
+export async function qualitativeRoutes(fastify: FastifyInstance): Promise<void> {
   // ==========================================================================
   // Trustworthiness Assessments
   // ==========================================================================
 
   /**
    * Create a new trustworthiness assessment
-   * POST /api/v1/compliance/trustworthiness/assessments
+   * POST /trustworthiness/assessments
    */
-  router.post('/trustworthiness/assessments', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: {
+      tenantId?: string;
+      aiSystemId?: string;
+      title?: string;
+      assessmentType?: string;
+      assessors?: string[];
+      methodology?: string;
+      scope?: string;
+    };
+  }>('/trustworthiness/assessments', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, aiSystemId, title, assessmentType, assessors, methodology, scope } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !title) {
+      return sendError(reply, 'tenantId and title are required');
+    }
+
     try {
-      const { tenantId, aiSystemId, title, assessmentType, assessors, methodology, scope } = req.body;
-
-      if (!tenantId || !title) {
-        res.status(400).json({ error: 'tenantId and title are required' });
-        return;
-      }
-
-      const assessment = await assessmentService.createAssessment(tenantId, {
-        aiSystemId,
+      const assessment = await getAssessmentService().createAssessment(effectiveTenantId, {
+        aiSystemId: aiSystemId || '',
         title,
-        assessmentType: assessmentType || 'comprehensive',
+        assessmentType: (assessmentType || 'comprehensive') as any,
         assessors,
         methodology,
         scope
-      });
+      } as any);
 
-      res.status(201).json(assessment);
+      return sendCreated(reply, assessment);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'createAssessment', tenantId: effectiveTenantId });
     }
   });
 
   /**
    * Get assessment by ID
-   * GET /api/v1/compliance/trustworthiness/assessments/:id
+   * GET /trustworthiness/assessments/:id
    */
-  router.get('/trustworthiness/assessments/:id', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { tenantId?: string };
+  }>('/trustworthiness/assessments/:id', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId query parameter is required');
+    }
+
     try {
-      const { tenantId } = req.query;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
-      }
-
-      const assessment = await assessmentService.getAssessment(tenantId as string, req.params.id);
+      const assessment = await getAssessmentService().getAssessment(effectiveTenantId, id);
 
       if (!assessment) {
-        res.status(404).json({ error: 'Assessment not found' });
-        return;
+        return sendNotFound(reply, 'Assessment', id);
       }
 
-      res.json(assessment);
+      return sendSuccess(reply, assessment);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'getAssessment', tenantId: effectiveTenantId, assessmentId: id });
     }
   });
 
   /**
    * List assessments for a tenant
-   * GET /api/v1/compliance/trustworthiness/assessments
+   * GET /trustworthiness/assessments
    */
-  router.get('/trustworthiness/assessments', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: {
+      tenantId?: string;
+      aiSystemId?: string;
+      status?: string;
+      overallRating?: string;
+      page?: string;
+      limit?: string;
+    };
+  }>('/trustworthiness/assessments', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, aiSystemId, status, overallRating, page, limit } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !aiSystemId) {
+      return sendError(reply, 'tenantId and aiSystemId query parameters are required');
+    }
+
     try {
-      const { tenantId, aiSystemId, status, limit, offset } = req.query;
-
-      if (!tenantId || !aiSystemId) {
-        res.status(400).json({ error: 'tenantId and aiSystemId query parameters are required' });
-        return;
-      }
-
-      const result = await assessmentService.listAssessments(
-        tenantId as string,
-        aiSystemId as string,
-        { status: status as any },
+      const assessments = await getAssessmentService().listAssessments(
+        effectiveTenantId,
+        aiSystemId,
         {
-          page: offset ? Math.floor(parseInt(offset as string, 10) / (parseInt(limit as string, 10) || 20)) + 1 : 1,
-          limit: limit ? parseInt(limit as string, 10) : 20
+          status: status as any,
+          overallRating: overallRating as any
+        },
+        {
+          page: page ? parseInt(page, 10) : 1,
+          limit: limit ? parseInt(limit, 10) : 20
         }
       );
 
-      res.json(result);
+      return sendSuccess(reply, assessments);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'listAssessments', tenantId: effectiveTenantId, aiSystemId });
     }
   });
 
   /**
    * Update requirement assessment
-   * PUT /api/v1/compliance/trustworthiness/assessments/:id/requirements/:requirementId
+   * PUT /trustworthiness/assessments/:id/requirements/:requirementId
    */
-  router.put('/trustworthiness/assessments/:id/requirements/:requirementId', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.put<{
+    Params: { id: string; requirementId: string };
+    Body: {
+      tenantId?: string;
+      rating?: string;
+      narrative?: string;
+      confidence?: string;
+      keyStrengths?: string[];
+      keyWeaknesses?: string[];
+      evidenceRefs?: string[];
+    };
+  }>('/trustworthiness/assessments/:id/requirements/:requirementId', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id, requirementId } = request.params;
+    const { tenantId, rating, narrative, confidence, keyStrengths, keyWeaknesses, evidenceRefs } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId is required in body');
+    }
+
     try {
-      const { tenantId, rating, narrative, evidence, assessedBy } = req.body;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId is required' });
-        return;
-      }
-
-      const assessment = await assessmentService.updateRequirementAssessment(
-        tenantId,
-        req.params.id,
-        req.params.requirementId as any,
+      const result = await getAssessmentService().updateRequirementAssessment(
+        effectiveTenantId,
+        id,
+        requirementId as any,
         {
-          rating,
+          rating: rating as any,
           narrative,
-          evidenceRefs: evidence
+          confidence: confidence as any,
+          keyStrengths,
+          keyWeaknesses,
+          evidenceRefs
         }
       );
 
-      if (!assessment) {
-        res.status(404).json({ error: 'Assessment not found' });
-        return;
+      if (!result) {
+        return sendNotFound(reply, 'Assessment', id);
       }
 
-      res.json(assessment);
+      return sendSuccess(reply, result);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'updateRequirementAssessment', tenantId: effectiveTenantId, assessmentId: id, requirementId });
     }
   });
 
   /**
-   * Get trustworthiness dashboard
-   * GET /api/v1/compliance/trustworthiness/assessments/:id/dashboard
+   * Get trustworthiness dashboard data
+   * GET /trustworthiness/dashboard
    */
-  router.get('/trustworthiness/assessments/:id/dashboard', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: { tenantId?: string; aiSystemId?: string };
+  }>('/trustworthiness/dashboard', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, aiSystemId } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !aiSystemId) {
+      return sendError(reply, 'tenantId and aiSystemId query parameters are required');
+    }
+
     try {
-      const { tenantId, aiSystemId } = req.query;
-
-      if (!tenantId || !aiSystemId) {
-        res.status(400).json({ error: 'tenantId and aiSystemId query parameters are required' });
-        return;
-      }
-
-      const dashboard = await assessmentService.getDashboard(tenantId as string, aiSystemId as string);
-
-      if (!dashboard) {
-        res.status(404).json({ error: 'Assessment not found' });
-        return;
-      }
-
-      res.json(dashboard);
+      const dashboard = await getAssessmentService().getDashboard(effectiveTenantId, aiSystemId);
+      return sendSuccess(reply, dashboard);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'getDashboard', tenantId: effectiveTenantId, aiSystemId });
     }
   });
 
   /**
-   * Get requirement coverage
-   * GET /api/v1/compliance/trustworthiness/coverage
+   * Get requirement coverage report
+   * GET /trustworthiness/coverage
    */
-  router.get('/trustworthiness/coverage', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { tenantId, aiSystemId } = req.query;
+  fastify.get<{
+    Querystring: { tenantId?: string; aiSystemId?: string };
+  }>('/trustworthiness/coverage', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, aiSystemId } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
 
-      if (!tenantId || !aiSystemId) {
-        res.status(400).json({ error: 'tenantId and aiSystemId query parameters are required' });
-        return;
-      }
-
-      const coverage = await assessmentService.getRequirementCoverage(tenantId as string, aiSystemId as string);
-      res.json(coverage);
-    } catch (error) {
-      next(error);
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !aiSystemId) {
+      return sendError(reply, 'tenantId and aiSystemId query parameters are required');
     }
-  });
 
-  // ==========================================================================
-  // Qualitative Findings
-  // ==========================================================================
-
-  /**
-   * Create a finding
-   * POST /api/v1/compliance/trustworthiness/assessments/:assessmentId/findings
-   */
-  router.post('/trustworthiness/assessments/:assessmentId/findings', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { tenantId, aiSystemId, findingType, requirementId, title, description, evidenceDescription, evidenceSources, recommendation, recommendedActions, severity, category, priority, relatedControls, identifiedBy } = req.body;
-
-      if (!tenantId || !findingType || !title) {
-        res.status(400).json({ error: 'tenantId, findingType and title are required' });
-        return;
-      }
-
-      const finding = await assessmentService.createFinding(tenantId, {
-        assessmentId: req.params.assessmentId,
-        aiSystemId,
-        findingType,
-        requirementId,
-        title,
-        description,
-        evidenceDescription,
-        evidenceSources,
-        recommendation,
-        recommendedActions,
-        severity,
-        category,
-        priority,
-        relatedControls
-      }, identifiedBy);
-
-      res.status(201).json(finding);
+      const coverage = await getAssessmentService().getRequirementCoverage(effectiveTenantId, aiSystemId);
+      return sendSuccess(reply, coverage);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'getRequirementCoverage', tenantId: effectiveTenantId, aiSystemId });
     }
   });
 
   /**
-   * List findings for an assessment
-   * GET /api/v1/compliance/trustworthiness/assessments/:assessmentId/findings
+   * Create finding for assessment
+   * POST /trustworthiness/assessments/:assessmentId/findings
    */
-  router.get('/trustworthiness/assessments/:assessmentId/findings', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Params: { assessmentId: string };
+    Body: {
+      tenantId?: string;
+      aiSystemId?: string;
+      requirementId?: string;
+      findingType?: string;
+      title?: string;
+      description?: string;
+      severity?: string;
+      priority?: string;
+      evidenceDescription?: string;
+      evidenceSources?: string[];
+      recommendation?: string;
+      recommendedActions?: Array<{ action: string; priority?: string; assignee?: string }>;
+      relatedControls?: string[];
+      createdBy?: string;
+    };
+  }>('/trustworthiness/assessments/:assessmentId/findings', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { assessmentId } = request.params;
+    const {
+      tenantId, aiSystemId, requirementId, findingType, title, description,
+      severity, priority, evidenceDescription, evidenceSources, recommendation,
+      recommendedActions, relatedControls, createdBy
+    } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !title || !findingType || !aiSystemId) {
+      return sendError(reply, 'tenantId, aiSystemId, title, and findingType are required');
+    }
+
     try {
-      const { tenantId, findingType, requirementId, status } = req.query;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
-      }
-
-      const findings = await assessmentService.listFindings(
-        tenantId as string,
-        req.params.assessmentId,
+      const finding = await getAssessmentService().createFinding(
+        effectiveTenantId,
         {
+          assessmentId,
+          aiSystemId,
+          title,
           findingType: findingType as any,
+          description: description || '',
           requirementId: requirementId as any,
-          status: status as any
-        }
+          severity: severity as any,
+          priority: priority as any,
+          evidenceDescription,
+          evidenceSources,
+          recommendation,
+          recommendedActions: recommendedActions as any,
+          relatedControls
+        },
+        createdBy
       );
 
-      res.json(findings);
+      return sendCreated(reply, finding);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'createFinding', tenantId: effectiveTenantId, assessmentId });
+    }
+  });
+
+  /**
+   * Get findings for assessment
+   * GET /trustworthiness/assessments/:assessmentId/findings
+   */
+  fastify.get<{
+    Params: { assessmentId: string };
+    Querystring: { tenantId?: string; findingType?: string; requirementId?: string; status?: string };
+  }>('/trustworthiness/assessments/:assessmentId/findings', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { assessmentId } = request.params;
+    const { tenantId, findingType, requirementId, status } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId query parameter is required');
+    }
+
+    try {
+      const findings = await getAssessmentService().listFindings(effectiveTenantId, assessmentId, {
+        findingType,
+        requirementId: requirementId as any,
+        status
+      });
+
+      return sendSuccess(reply, findings);
+    } catch (error) {
+      return handleRouteError(error, reply, { operation: 'listFindings', tenantId: effectiveTenantId, assessmentId });
     }
   });
 
   /**
    * Update finding status
-   * PATCH /api/v1/compliance/trustworthiness/findings/:id/status
+   * PATCH /trustworthiness/findings/:id/status
    */
-  router.patch('/trustworthiness/findings/:id/status', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.patch<{
+    Params: { id: string };
+    Body: {
+      tenantId?: string;
+      status?: string;
+      resolutionNotes?: string;
+    };
+  }>('/trustworthiness/findings/:id/status', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId, status, resolutionNotes } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !status) {
+      return sendError(reply, 'tenantId and status are required');
+    }
+
     try {
-      const { tenantId, status, resolutionNotes } = req.body;
-
-      if (!tenantId || !status) {
-        res.status(400).json({ error: 'tenantId and status are required' });
-        return;
-      }
-
-      const finding = await assessmentService.updateFindingStatus(
-        tenantId,
-        req.params.id,
-        status,
-        resolutionNotes
-      );
+      const finding = await getAssessmentService().updateFindingStatus(effectiveTenantId, id, status, resolutionNotes);
 
       if (!finding) {
-        res.status(404).json({ error: 'Finding not found' });
-        return;
+        return sendNotFound(reply, 'Finding', id);
       }
 
-      res.json(finding);
+      return sendSuccess(reply, finding);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'updateFindingStatus', tenantId: effectiveTenantId, findingId: id });
+    }
+  });
+
+  /**
+   * Update overall assessment
+   * PUT /trustworthiness/assessments/:id/overall
+   */
+  fastify.put<{
+    Params: { id: string };
+    Body: {
+      tenantId?: string;
+      overallRating?: string;
+      overallNarrative?: string;
+      overallConfidence?: string;
+      recommendations?: string[];
+      priorityActions?: string[];
+    };
+  }>('/trustworthiness/assessments/:id/overall', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId, overallRating, overallNarrative, overallConfidence, recommendations, priorityActions } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId is required in body');
+    }
+
+    try {
+      const result = await getAssessmentService().updateOverallAssessment(effectiveTenantId, id, {
+        overallRating: overallRating as any,
+        overallNarrative,
+        overallConfidence: overallConfidence as any,
+        recommendations,
+        priorityActions
+      });
+
+      if (!result) {
+        return sendNotFound(reply, 'Assessment', id);
+      }
+
+      return sendSuccess(reply, result);
+    } catch (error) {
+      return handleRouteError(error, reply, { operation: 'updateOverallAssessment', tenantId: effectiveTenantId, assessmentId: id });
+    }
+  });
+
+  /**
+   * Change assessment status
+   * PATCH /trustworthiness/assessments/:id/status
+   */
+  fastify.patch<{
+    Params: { id: string };
+    Body: {
+      tenantId?: string;
+      status?: string;
+      reviewedBy?: string;
+    };
+  }>('/trustworthiness/assessments/:id/status', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId, status, reviewedBy } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !status) {
+      return sendError(reply, 'tenantId and status are required');
+    }
+
+    try {
+      const result = await getAssessmentService().changeStatus(effectiveTenantId, id, status as any, reviewedBy);
+
+      if (!result) {
+        return sendNotFound(reply, 'Assessment', id);
+      }
+
+      return sendSuccess(reply, result);
+    } catch (error) {
+      return handleRouteError(error, reply, { operation: 'changeAssessmentStatus', tenantId: effectiveTenantId, assessmentId: id });
     }
   });
 
@@ -300,168 +488,294 @@ export function createQualitativeRoutes(pool: Pool): Router {
   // ==========================================================================
 
   /**
-   * Register a stakeholder
-   * POST /api/v1/compliance/stakeholders
+   * Create a stakeholder
+   * POST /stakeholders
    */
-  router.post('/stakeholders', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: {
+      tenantId?: string;
+      aiSystemId?: string;
+      name?: string;
+      stakeholderType?: string;
+      category?: string;
+      description?: string;
+      impactLevel?: string;
+      impactDescription?: string;
+      powerLevel?: string;
+      interestLevel?: string;
+      isVulnerableGroup?: boolean;
+      vulnerabilityFactors?: string[];
+      keyConcerns?: string[];
+      keyInterests?: string[];
+      createdBy?: string;
+    };
+  }>('/stakeholders', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const {
+      tenantId, aiSystemId, name, stakeholderType, category, description,
+      impactLevel, impactDescription, powerLevel, interestLevel,
+      isVulnerableGroup, vulnerabilityFactors, keyConcerns, keyInterests, createdBy
+    } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !name || !stakeholderType || !aiSystemId) {
+      return sendError(reply, 'tenantId, aiSystemId, name, and stakeholderType are required');
+    }
+
     try {
-      const { tenantId, aiSystemId, name, stakeholderType, category, description, impactLevel, impactDescription, powerLevel, interestLevel, isVulnerableGroup, vulnerabilityFactors, keyConcerns, keyInterests, createdBy } = req.body;
+      const stakeholder = await getStakeholderService().createStakeholder(
+        effectiveTenantId,
+        {
+          aiSystemId,
+          name,
+          stakeholderType: stakeholderType as any,
+          category,
+          description,
+          impactLevel: impactLevel as any,
+          impactDescription,
+          powerLevel: powerLevel as any,
+          interestLevel: interestLevel as any,
+          isVulnerableGroup,
+          vulnerabilityFactors: vulnerabilityFactors as any,
+          keyConcerns,
+          keyInterests
+        },
+        createdBy
+      );
 
-      if (!tenantId || !name || !stakeholderType) {
-        res.status(400).json({ error: 'tenantId, name, and stakeholderType are required' });
-        return;
-      }
-
-      const stakeholder = await stakeholderService.createStakeholder(tenantId, {
-        aiSystemId,
-        name,
-        stakeholderType,
-        category,
-        description,
-        impactLevel,
-        impactDescription,
-        powerLevel,
-        interestLevel,
-        isVulnerableGroup,
-        vulnerabilityFactors,
-        keyConcerns,
-        keyInterests
-      }, createdBy);
-
-      res.status(201).json(stakeholder);
+      return sendCreated(reply, stakeholder);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'createStakeholder', tenantId: effectiveTenantId, name });
     }
   });
 
   /**
    * Get stakeholder by ID
-   * GET /api/v1/compliance/stakeholders/:id
+   * GET /stakeholders/:id
    */
-  router.get('/stakeholders/:id', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { tenantId?: string };
+  }>('/stakeholders/:id', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId query parameter is required');
+    }
+
     try {
-      const { tenantId } = req.query;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
-      }
-
-      const stakeholder = await stakeholderService.getStakeholder(tenantId as string, req.params.id);
+      const stakeholder = await getStakeholderService().getStakeholder(effectiveTenantId, id);
 
       if (!stakeholder) {
-        res.status(404).json({ error: 'Stakeholder not found' });
-        return;
+        return sendNotFound(reply, 'Stakeholder', id);
       }
 
-      res.json(stakeholder);
+      return sendSuccess(reply, stakeholder);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'getStakeholder', tenantId: effectiveTenantId, stakeholderId: id });
     }
   });
 
   /**
    * List stakeholders
-   * GET /api/v1/compliance/stakeholders
+   * GET /stakeholders
    */
-  router.get('/stakeholders', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: {
+      tenantId?: string;
+      aiSystemId?: string;
+      stakeholderType?: string;
+      impactLevel?: string;
+      isVulnerableGroup?: string;
+      engagementStatus?: string;
+      page?: string;
+      limit?: string;
+    };
+  }>('/stakeholders', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, aiSystemId, stakeholderType, impactLevel, isVulnerableGroup, engagementStatus, page, limit } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !aiSystemId) {
+      return sendError(reply, 'tenantId and aiSystemId query parameters are required');
+    }
+
     try {
-      const { tenantId, aiSystemId, stakeholderType, impactLevel, isVulnerableGroup, limit, offset } = req.query;
-
-      if (!tenantId || !aiSystemId) {
-        res.status(400).json({ error: 'tenantId and aiSystemId query parameters are required' });
-        return;
-      }
-
-      const result = await stakeholderService.listStakeholders(
-        tenantId as string,
-        aiSystemId as string,
+      const stakeholders = await getStakeholderService().listStakeholders(
+        effectiveTenantId,
+        aiSystemId,
         {
           stakeholderType: stakeholderType as any,
           impactLevel: impactLevel as any,
-          isVulnerableGroup: isVulnerableGroup === 'true'
+          isVulnerableGroup: isVulnerableGroup ? isVulnerableGroup === 'true' : undefined,
+          engagementStatus: engagementStatus as any
         },
         {
-          page: offset ? Math.floor(parseInt(offset as string, 10) / (parseInt(limit as string, 10) || 20)) + 1 : 1,
-          limit: limit ? parseInt(limit as string, 10) : 20
+          page: page ? parseInt(page, 10) : 1,
+          limit: limit ? parseInt(limit, 10) : 20
         }
       );
 
-      res.json(result);
+      return sendSuccess(reply, stakeholders);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'listStakeholders', tenantId: effectiveTenantId, aiSystemId });
+    }
+  });
+
+  /**
+   * Update stakeholder
+   * PUT /stakeholders/:id
+   */
+  fastify.put<{
+    Params: { id: string };
+    Body: {
+      tenantId?: string;
+      name?: string;
+      stakeholderType?: string;
+      category?: string;
+      description?: string;
+      impactLevel?: string;
+      impactDescription?: string;
+      powerLevel?: string;
+      interestLevel?: string;
+      isVulnerableGroup?: boolean;
+      vulnerabilityFactors?: string[];
+      keyConcerns?: string[];
+      keyInterests?: string[];
+    };
+  }>('/stakeholders/:id', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId, ...updates } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId is required in body');
+    }
+
+    try {
+      const stakeholder = await getStakeholderService().updateStakeholder(effectiveTenantId, id, updates as any);
+
+      if (!stakeholder) {
+        return sendNotFound(reply, 'Stakeholder', id);
+      }
+
+      return sendSuccess(reply, stakeholder);
+    } catch (error) {
+      return handleRouteError(error, reply, { operation: 'updateStakeholder', tenantId: effectiveTenantId, stakeholderId: id });
+    }
+  });
+
+  /**
+   * Delete stakeholder
+   * DELETE /stakeholders/:id
+   */
+  fastify.delete<{
+    Params: { id: string };
+    Querystring: { tenantId?: string };
+  }>('/stakeholders/:id', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId query parameter is required');
+    }
+
+    try {
+      const deleted = await getStakeholderService().deleteStakeholder(effectiveTenantId, id);
+
+      if (!deleted) {
+        return sendNotFound(reply, 'Stakeholder', id);
+      }
+
+      return sendSuccess(reply, { deleted: true });
+    } catch (error) {
+      return handleRouteError(error, reply, { operation: 'deleteStakeholder', tenantId: effectiveTenantId, stakeholderId: id });
     }
   });
 
   /**
    * Record stakeholder engagement
-   * POST /api/v1/compliance/stakeholders/:id/engagement
+   * POST /stakeholders/:id/engagement
    */
-  router.post('/stakeholders/:id/engagement', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Params: { id: string };
+    Body: {
+      tenantId?: string;
+      engagementType?: string;
+      engagementDate?: string;
+      durationMinutes?: number;
+      participants?: string[];
+      summary?: string;
+      keyInsights?: string[];
+      concernsRaised?: string[];
+      suggestions?: string[];
+      followUpRequired?: boolean;
+      followUpNotes?: string;
+      evidenceId?: string;
+      createdBy?: string;
+    };
+  }>('/stakeholders/:id/engagement', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const {
+      tenantId, engagementType, engagementDate, durationMinutes, participants,
+      summary, keyInsights, concernsRaised, suggestions, followUpRequired,
+      followUpNotes, evidenceId, createdBy
+    } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !engagementType || !summary) {
+      return sendError(reply, 'tenantId, engagementType, and summary are required');
+    }
+
     try {
-      const {
-        tenantId,
-        engagementType,
-        engagementDate,
+      const engagement = await getStakeholderService().recordEngagement(effectiveTenantId, id, {
+        engagementType: engagementType as any,
+        engagementDate: engagementDate ? new Date(engagementDate) : new Date(),
         durationMinutes,
-        participants,
+        participants: participants || [],
         summary,
-        keyInsights,
-        concernsRaised,
-        suggestions,
-        followUpRequired,
+        keyInsights: keyInsights || [],
+        concernsRaised: concernsRaised || [],
+        suggestions: suggestions || [],
+        followUpRequired: followUpRequired || false,
         followUpNotes,
         evidenceId,
         createdBy
-      } = req.body;
+      });
 
-      if (!tenantId || !engagementType) {
-        res.status(400).json({ error: 'tenantId and engagementType are required' });
-        return;
-      }
-
-      const engagement = await stakeholderService.recordEngagement(
-        tenantId,
-        req.params.id,
-        {
-          engagementType,
-          engagementDate: engagementDate ? new Date(engagementDate) : new Date(),
-          durationMinutes,
-          participants: participants || [],
-          summary: summary || '',
-          keyInsights: keyInsights || [],
-          concernsRaised: concernsRaised || [],
-          suggestions: suggestions || [],
-          followUpRequired: followUpRequired || false,
-          followUpNotes,
-          evidenceId,
-          createdBy
-        }
-      );
-
-      res.status(201).json(engagement);
+      return sendCreated(reply, engagement);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'recordEngagement', tenantId: effectiveTenantId, stakeholderId: id });
     }
   });
 
   /**
-   * Get stakeholder impact analysis
-   * GET /api/v1/compliance/stakeholders/:id/impact
+   * Get stakeholder impact analysis for AI system
+   * GET /stakeholders/impact-analysis
    */
-  router.get('/stakeholders/:id/impact', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: { tenantId?: string; aiSystemId?: string };
+  }>('/stakeholders/impact-analysis', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, aiSystemId } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !aiSystemId) {
+      return sendError(reply, 'tenantId and aiSystemId query parameters are required');
+    }
+
     try {
-      const { tenantId } = req.query;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
-      }
-
-      const impact = await stakeholderService.getImpactAnalysis(tenantId as string, req.params.id);
-      res.json(impact);
+      const impact = await getStakeholderService().getImpactAnalysis(effectiveTenantId, aiSystemId);
+      return sendSuccess(reply, impact);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'getImpactAnalysis', tenantId: effectiveTenantId, aiSystemId });
     }
   });
 
@@ -470,145 +784,272 @@ export function createQualitativeRoutes(pool: Pool): Router {
   // ==========================================================================
 
   /**
-   * Create a socio-technical scenario
-   * POST /api/v1/compliance/scenarios
+   * Create scenario
+   * POST /scenarios
    */
-  router.post('/scenarios', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: {
+      tenantId?: string;
+      aiSystemId?: string;
+      title?: string;
+      scenarioType?: string;
+      description?: string;
+      narrative?: string;
+      contextSetting?: string;
+      actors?: Array<{ name: string; role: string; description?: string }>;
+      preconditions?: string[];
+      primaryRequirement?: string;
+      affectedRequirements?: string[];
+      likelihood?: string;
+      severity?: string;
+      potentialHarms?: string[];
+      potentialBenefits?: string[];
+      mitigations?: string[];
+      createdBy?: string;
+    };
+  }>('/scenarios', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const {
+      tenantId, aiSystemId, title, scenarioType, description, narrative,
+      contextSetting, actors, preconditions, primaryRequirement, affectedRequirements,
+      likelihood, severity, potentialHarms, potentialBenefits, mitigations, createdBy
+    } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !aiSystemId || !title || !scenarioType) {
+      return sendError(reply, 'tenantId, aiSystemId, title, and scenarioType are required');
+    }
+
     try {
-      const { tenantId, aiSystemId, title, scenarioType, description, narrative, contextSetting, actors, preconditions, primaryRequirement, affectedRequirements, likelihood, severity, potentialHarms, potentialBenefits, mitigations, createdBy } = req.body;
+      const scenario = await getScenarioService().createScenario(
+        effectiveTenantId,
+        {
+          aiSystemId,
+          title,
+          scenarioType: scenarioType as any,
+          description: description || '',
+          narrative,
+          contextSetting,
+          actors: actors as any,
+          preconditions,
+          primaryRequirement: primaryRequirement as any,
+          affectedRequirements: affectedRequirements as any,
+          likelihood: likelihood as any,
+          severity: severity as any,
+          potentialHarms,
+          potentialBenefits,
+          mitigations
+        },
+        createdBy
+      );
 
-      if (!tenantId || !title || !scenarioType) {
-        res.status(400).json({ error: 'tenantId, title, and scenarioType are required' });
-        return;
-      }
-
-      const scenario = await scenarioService.createScenario(tenantId, {
-        aiSystemId,
-        title,
-        scenarioType,
-        description,
-        narrative,
-        contextSetting,
-        actors,
-        preconditions,
-        primaryRequirement,
-        affectedRequirements,
-        likelihood,
-        severity,
-        potentialHarms,
-        potentialBenefits,
-        mitigations
-      }, createdBy);
-
-      res.status(201).json(scenario);
+      return sendCreated(reply, scenario);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'createScenario', tenantId: effectiveTenantId, aiSystemId });
     }
   });
 
   /**
    * Get scenario by ID
-   * GET /api/v1/compliance/scenarios/:id
+   * GET /scenarios/:id
    */
-  router.get('/scenarios/:id', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { tenantId?: string };
+  }>('/scenarios/:id', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId query parameter is required');
+    }
+
     try {
-      const { tenantId } = req.query;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
-      }
-
-      const scenario = await scenarioService.getScenario(tenantId as string, req.params.id);
+      const scenario = await getScenarioService().getScenario(effectiveTenantId, id);
 
       if (!scenario) {
-        res.status(404).json({ error: 'Scenario not found' });
-        return;
+        return sendNotFound(reply, 'Scenario', id);
       }
 
-      res.json(scenario);
+      return sendSuccess(reply, scenario);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'getScenario', tenantId: effectiveTenantId, scenarioId: id });
     }
   });
 
   /**
    * List scenarios
-   * GET /api/v1/compliance/scenarios
+   * GET /scenarios
    */
-  router.get('/scenarios', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: {
+      tenantId?: string;
+      aiSystemId?: string;
+      scenarioType?: string;
+      status?: string;
+      primaryRequirement?: string;
+      minRiskScore?: string;
+      page?: string;
+      limit?: string;
+    };
+  }>('/scenarios', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, aiSystemId, scenarioType, status, primaryRequirement, minRiskScore, page, limit } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !aiSystemId) {
+      return sendError(reply, 'tenantId and aiSystemId query parameters are required');
+    }
+
     try {
-      const { tenantId, aiSystemId, scenarioType, status, minRiskScore, limit, offset } = req.query;
-
-      if (!tenantId || !aiSystemId) {
-        res.status(400).json({ error: 'tenantId and aiSystemId query parameters are required' });
-        return;
-      }
-
-      const result = await scenarioService.listScenarios(
-        tenantId as string,
-        aiSystemId as string,
+      const scenarios = await getScenarioService().listScenarios(
+        effectiveTenantId,
+        aiSystemId,
         {
           scenarioType: scenarioType as any,
           status: status as any,
-          minRiskScore: minRiskScore ? parseInt(minRiskScore as string, 10) : undefined
+          primaryRequirement: primaryRequirement as any,
+          minRiskScore: minRiskScore ? parseFloat(minRiskScore) : undefined
         },
         {
-          page: offset ? Math.floor(parseInt(offset as string, 10) / (parseInt(limit as string, 10) || 20)) + 1 : 1,
-          limit: limit ? parseInt(limit as string, 10) : 20
+          page: page ? parseInt(page, 10) : 1,
+          limit: limit ? parseInt(limit, 10) : 20
         }
       );
 
-      res.json(result);
+      return sendSuccess(reply, scenarios);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'listScenarios', tenantId: effectiveTenantId, aiSystemId });
     }
   });
 
   /**
-   * AI-generate scenarios for an AI system
-   * POST /api/v1/compliance/scenarios/generate
+   * Update scenario
+   * PUT /scenarios/:id
    */
-  router.post('/scenarios/generate', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { tenantId, aiSystemId, focusRequirement, generatedScenarios, generationPrompt, createdBy } = req.body;
+  fastify.put<{
+    Params: { id: string };
+    Body: {
+      tenantId?: string;
+      title?: string;
+      scenarioType?: string;
+      description?: string;
+      narrative?: string;
+      contextSetting?: string;
+      actors?: Array<{ name: string; role: string; description?: string }>;
+      preconditions?: string[];
+      primaryRequirement?: string;
+      affectedRequirements?: string[];
+      likelihood?: string;
+      severity?: string;
+      potentialHarms?: string[];
+      potentialBenefits?: string[];
+      mitigations?: string[];
+      status?: string;
+      reviewNotes?: string;
+    };
+  }>('/scenarios/:id', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId, ...updates } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
 
-      if (!tenantId || !aiSystemId || !generatedScenarios) {
-        res.status(400).json({ error: 'tenantId, aiSystemId, and generatedScenarios are required' });
-        return;
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId is required in body');
+    }
+
+    try {
+      const scenario = await getScenarioService().updateScenario(effectiveTenantId, id, updates as any);
+
+      if (!scenario) {
+        return sendNotFound(reply, 'Scenario', id);
       }
 
-      const scenarios = await scenarioService.storeGeneratedScenarios(
-        tenantId,
-        { aiSystemId, focusRequirement },
-        generatedScenarios,
-        generationPrompt || 'Manual entry',
-        createdBy
-      );
-
-      res.status(201).json({ scenarios, count: scenarios.length });
+      return sendSuccess(reply, scenario);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'updateScenario', tenantId: effectiveTenantId, scenarioId: id });
+    }
+  });
+
+  /**
+   * Delete scenario
+   * DELETE /scenarios/:id
+   */
+  fastify.delete<{
+    Params: { id: string };
+    Querystring: { tenantId?: string };
+  }>('/scenarios/:id', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId query parameter is required');
+    }
+
+    try {
+      const deleted = await getScenarioService().deleteScenario(effectiveTenantId, id);
+
+      if (!deleted) {
+        return sendNotFound(reply, 'Scenario', id);
+      }
+
+      return sendSuccess(reply, { deleted: true });
+    } catch (error) {
+      return handleRouteError(error, reply, { operation: 'deleteScenario', tenantId: effectiveTenantId, scenarioId: id });
+    }
+  });
+
+  /**
+   * Get high risk scenarios
+   * GET /scenarios/high-risk
+   */
+  fastify.get<{
+    Querystring: { tenantId?: string; aiSystemId?: string; minRiskScore?: string };
+  }>('/scenarios/high-risk', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, aiSystemId, minRiskScore } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !aiSystemId) {
+      return sendError(reply, 'tenantId and aiSystemId query parameters are required');
+    }
+
+    try {
+      const scenarios = await getScenarioService().getHighRiskScenarios(
+        effectiveTenantId,
+        aiSystemId,
+        minRiskScore ? parseFloat(minRiskScore) : 12
+      );
+      return sendSuccess(reply, scenarios);
+    } catch (error) {
+      return handleRouteError(error, reply, { operation: 'getHighRiskScenarios', tenantId: effectiveTenantId, aiSystemId });
     }
   });
 
   /**
    * Get scenario statistics
-   * GET /api/v1/compliance/scenarios/stats
+   * GET /scenarios/stats
    */
-  router.get('/scenarios/stats', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: { tenantId?: string; aiSystemId?: string };
+  }>('/scenarios/stats', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, aiSystemId } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !aiSystemId) {
+      return sendError(reply, 'tenantId and aiSystemId query parameters are required');
+    }
+
     try {
-      const { tenantId, aiSystemId } = req.query;
-
-      if (!tenantId || !aiSystemId) {
-        res.status(400).json({ error: 'tenantId and aiSystemId query parameters are required' });
-        return;
-      }
-
-      const stats = await scenarioService.getScenarioStats(tenantId as string, aiSystemId as string);
-      res.json(stats);
+      const stats = await getScenarioService().getScenarioStats(effectiveTenantId, aiSystemId);
+      return sendSuccess(reply, stats);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'getScenarioStats', tenantId: effectiveTenantId, aiSystemId });
     }
   });
 
@@ -617,152 +1058,298 @@ export function createQualitativeRoutes(pool: Pool): Router {
   // ==========================================================================
 
   /**
-   * Create an ethical tension
-   * POST /api/v1/compliance/tensions
+   * Create tension
+   * POST /tensions
    */
-  router.post('/tensions', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: {
+      tenantId?: string;
+      aiSystemId?: string;
+      scenarioId?: string;
+      title?: string;
+      description?: string;
+      valueA?: string;
+      valueADescription?: string;
+      valueB?: string;
+      valueBDescription?: string;
+      tensionType?: string;
+      requirementA?: string;
+      requirementB?: string;
+      affectedStakeholders?: string[];
+      severity?: string;
+      createdBy?: string;
+    };
+  }>('/tensions', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const {
+      tenantId, aiSystemId, scenarioId, title, description, valueA, valueADescription,
+      valueB, valueBDescription, tensionType, requirementA, requirementB,
+      affectedStakeholders, severity, createdBy
+    } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !aiSystemId || !title || !valueA || !valueB || !tensionType) {
+      return sendError(reply, 'tenantId, aiSystemId, title, valueA, valueB, and tensionType are required');
+    }
+
     try {
-      const { tenantId, aiSystemId, scenarioId, title, description, valueA, valueADescription, valueB, valueBDescription, tensionType, requirementA, requirementB, affectedStakeholders, severity, createdBy } = req.body;
+      const tension = await getTensionService().createTension(
+        effectiveTenantId,
+        {
+          aiSystemId,
+          scenarioId,
+          title,
+          description: description || '',
+          valueA,
+          valueADescription,
+          valueB,
+          valueBDescription,
+          tensionType: tensionType as any,
+          requirementA: requirementA as any,
+          requirementB: requirementB as any,
+          affectedStakeholders,
+          severity: severity as any
+        },
+        createdBy
+      );
 
-      if (!tenantId || !valueA || !valueB || !tensionType) {
-        res.status(400).json({ error: 'tenantId, valueA, valueB, and tensionType are required' });
-        return;
-      }
-
-      const tension = await tensionService.createTension(tenantId, {
-        aiSystemId,
-        scenarioId,
-        title,
-        description,
-        valueA,
-        valueADescription,
-        valueB,
-        valueBDescription,
-        tensionType,
-        requirementA,
-        requirementB,
-        affectedStakeholders,
-        severity: severity || 'moderate'
-      }, createdBy);
-
-      res.status(201).json(tension);
+      return sendCreated(reply, tension);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'createTension', tenantId: effectiveTenantId, aiSystemId });
     }
   });
 
   /**
    * Get tension by ID
-   * GET /api/v1/compliance/tensions/:id
+   * GET /tensions/:id
    */
-  router.get('/tensions/:id', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { tenantId?: string };
+  }>('/tensions/:id', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId query parameter is required');
+    }
+
     try {
-      const { tenantId } = req.query;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
-      }
-
-      const tension = await tensionService.getTension(tenantId as string, req.params.id);
+      const tension = await getTensionService().getTension(effectiveTenantId, id);
 
       if (!tension) {
-        res.status(404).json({ error: 'Tension not found' });
-        return;
+        return sendNotFound(reply, 'Tension', id);
       }
 
-      res.json(tension);
+      return sendSuccess(reply, tension);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'getTension', tenantId: effectiveTenantId, tensionId: id });
     }
   });
 
   /**
    * List tensions
-   * GET /api/v1/compliance/tensions
+   * GET /tensions
    */
-  router.get('/tensions', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: {
+      tenantId?: string;
+      aiSystemId?: string;
+      tensionType?: string;
+      severity?: string;
+      status?: string;
+      requirementId?: string;
+      scenarioId?: string;
+      page?: string;
+      limit?: string;
+    };
+  }>('/tensions', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, aiSystemId, tensionType, severity, status, requirementId, scenarioId, page, limit } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !aiSystemId) {
+      return sendError(reply, 'tenantId and aiSystemId query parameters are required');
+    }
+
     try {
-      const { tenantId, aiSystemId, severity, status, requirementId, limit, offset } = req.query;
-
-      if (!tenantId || !aiSystemId) {
-        res.status(400).json({ error: 'tenantId and aiSystemId query parameters are required' });
-        return;
-      }
-
-      const result = await tensionService.listTensions(
-        tenantId as string,
-        aiSystemId as string,
+      const tensions = await getTensionService().listTensions(
+        effectiveTenantId,
+        aiSystemId,
         {
+          tensionType: tensionType as any,
           severity: severity as any,
           status: status as any,
-          requirementId: requirementId as any
+          requirementId: requirementId as any,
+          scenarioId
         },
         {
-          page: offset ? Math.floor(parseInt(offset as string, 10) / (parseInt(limit as string, 10) || 20)) + 1 : 1,
-          limit: limit ? parseInt(limit as string, 10) : 20
+          page: page ? parseInt(page, 10) : 1,
+          limit: limit ? parseInt(limit, 10) : 20
         }
       );
 
-      res.json(result);
+      return sendSuccess(reply, tensions);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'listTensions', tenantId: effectiveTenantId, aiSystemId });
     }
   });
 
   /**
-   * Resolve a tension
-   * POST /api/v1/compliance/tensions/:id/resolve
+   * Update tension
+   * PUT /tensions/:id
    */
-  router.post('/tensions/:id/resolve', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { tenantId, resolutionApproach, resolutionRationale, tradeOffDecision, residualConcerns, newStatus, resolvedBy } = req.body;
+  fastify.put<{
+    Params: { id: string };
+    Body: {
+      tenantId?: string;
+      title?: string;
+      description?: string;
+      valueA?: string;
+      valueADescription?: string;
+      valueB?: string;
+      valueBDescription?: string;
+      tensionType?: string;
+      requirementA?: string;
+      requirementB?: string;
+      affectedStakeholders?: string[];
+      severity?: string;
+    };
+  }>('/tensions/:id', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId, ...updates } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
 
-      if (!tenantId || !resolutionApproach || !resolutionRationale) {
-        res.status(400).json({ error: 'tenantId, resolutionApproach and resolutionRationale are required' });
-        return;
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId is required in body');
+    }
+
+    try {
+      const tension = await getTensionService().updateTension(effectiveTenantId, id, updates as any);
+
+      if (!tension) {
+        return sendNotFound(reply, 'Tension', id);
       }
 
-      const tension = await tensionService.resolveTension(
-        tenantId,
-        req.params.id,
+      return sendSuccess(reply, tension);
+    } catch (error) {
+      return handleRouteError(error, reply, { operation: 'updateTension', tenantId: effectiveTenantId, tensionId: id });
+    }
+  });
+
+  /**
+   * Delete tension
+   * DELETE /tensions/:id
+   */
+  fastify.delete<{
+    Params: { id: string };
+    Querystring: { tenantId?: string };
+  }>('/tensions/:id', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId query parameter is required');
+    }
+
+    try {
+      const deleted = await getTensionService().deleteTension(effectiveTenantId, id);
+
+      if (!deleted) {
+        return sendNotFound(reply, 'Tension', id);
+      }
+
+      return sendSuccess(reply, { deleted: true });
+    } catch (error) {
+      return handleRouteError(error, reply, { operation: 'deleteTension', tenantId: effectiveTenantId, tensionId: id });
+    }
+  });
+
+  /**
+   * Resolve tension
+   * POST /tensions/:id/resolve
+   */
+  fastify.post<{
+    Params: { id: string };
+    Body: {
+      tenantId?: string;
+      resolutionApproach?: string;
+      resolutionRationale?: string;
+      tradeOffDecision?: string;
+      residualConcerns?: string;
+      newStatus?: string;
+      resolvedBy?: string;
+    };
+  }>('/tensions/:id/resolve', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const {
+      tenantId, resolutionApproach, resolutionRationale, tradeOffDecision,
+      residualConcerns, newStatus, resolvedBy
+    } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !resolutionApproach || !resolutionRationale || !newStatus) {
+      return sendError(reply, 'tenantId, resolutionApproach, resolutionRationale, and newStatus are required');
+    }
+
+    try {
+      const result = await getTensionService().resolveTension(
+        effectiveTenantId,
+        id,
         {
           resolutionApproach,
           resolutionRationale,
           tradeOffDecision,
           residualConcerns,
-          newStatus: newStatus || 'mitigated'
+          newStatus: newStatus as any
         },
         resolvedBy
       );
 
-      if (!tension) {
-        res.status(404).json({ error: 'Tension not found' });
-        return;
+      if (!result) {
+        return sendNotFound(reply, 'Tension', id);
       }
 
-      res.json(tension);
+      return sendSuccess(reply, result);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'resolveTension', tenantId: effectiveTenantId, tensionId: id });
     }
   });
 
   /**
    * Add stakeholder perspective to tension
-   * POST /api/v1/compliance/tensions/:id/perspectives
+   * POST /tensions/:id/perspectives
    */
-  router.post('/tensions/:id/perspectives', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Params: { id: string };
+    Body: {
+      tenantId?: string;
+      stakeholderId?: string;
+      perspective?: string;
+      preferredResolution?: string;
+    };
+  }>('/tensions/:id/perspectives', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const {
+      tenantId, stakeholderId, perspective, preferredResolution
+    } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !stakeholderId || !perspective) {
+      return sendError(reply, 'tenantId, stakeholderId, and perspective are required');
+    }
+
     try {
-      const { tenantId, stakeholderId, perspective, preferredResolution } = req.body;
-
-      if (!tenantId || !stakeholderId || !perspective) {
-        res.status(400).json({ error: 'tenantId, stakeholderId and perspective are required' });
-        return;
-      }
-
-      const tension = await tensionService.addStakeholderPerspective(
-        tenantId,
-        req.params.id,
+      const tension = await getTensionService().addStakeholderPerspective(
+        effectiveTenantId,
+        id,
         stakeholderId,
         {
           perspective,
@@ -771,60 +1358,58 @@ export function createQualitativeRoutes(pool: Pool): Router {
       );
 
       if (!tension) {
-        res.status(404).json({ error: 'Tension not found' });
-        return;
+        return sendNotFound(reply, 'Tension', id);
       }
 
-      res.json(tension);
+      return sendCreated(reply, tension);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'addStakeholderPerspective', tenantId: effectiveTenantId, tensionId: id });
     }
   });
 
   /**
-   * AI-identify tensions from scenarios
-   * POST /api/v1/compliance/tensions/identify
+   * Get unresolved tensions
+   * GET /tensions/unresolved
    */
-  router.post('/tensions/identify', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: { tenantId?: string; aiSystemId?: string };
+  }>('/tensions/unresolved', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, aiSystemId } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !aiSystemId) {
+      return sendError(reply, 'tenantId and aiSystemId query parameters are required');
+    }
+
     try {
-      const { tenantId, aiSystemId, identifiedTensions, aiAnalysisContext, createdBy } = req.body;
-
-      if (!tenantId || !aiSystemId || !identifiedTensions) {
-        res.status(400).json({ error: 'tenantId, aiSystemId and identifiedTensions are required' });
-        return;
-      }
-
-      const tensions = await tensionService.storeIdentifiedTensions(
-        tenantId,
-        aiSystemId,
-        identifiedTensions,
-        aiAnalysisContext || {},
-        createdBy
-      );
-
-      res.status(201).json({ tensions, count: tensions.length });
+      const tensions = await getTensionService().getUnresolvedTensions(effectiveTenantId, aiSystemId);
+      return sendSuccess(reply, tensions);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'getUnresolvedTensions', tenantId: effectiveTenantId, aiSystemId });
     }
   });
 
   /**
    * Get tension statistics
-   * GET /api/v1/compliance/tensions/stats
+   * GET /tensions/stats
    */
-  router.get('/tensions/stats', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: { tenantId?: string; aiSystemId?: string };
+  }>('/tensions/stats', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, aiSystemId } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !aiSystemId) {
+      return sendError(reply, 'tenantId and aiSystemId query parameters are required');
+    }
+
     try {
-      const { tenantId, aiSystemId } = req.query;
-
-      if (!tenantId || !aiSystemId) {
-        res.status(400).json({ error: 'tenantId and aiSystemId query parameters are required' });
-        return;
-      }
-
-      const stats = await tensionService.getTensionStats(tenantId as string, aiSystemId as string);
-      res.json(stats);
+      const stats = await getTensionService().getTensionStats(effectiveTenantId, aiSystemId);
+      return sendSuccess(reply, stats);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'getTensionStats', tenantId: effectiveTenantId, aiSystemId });
     }
   });
 
@@ -834,217 +1419,230 @@ export function createQualitativeRoutes(pool: Pool): Router {
 
   /**
    * Import Z-Inspection report
-   * POST /api/v1/compliance/z-inspection/import
+   * POST /z-inspection/import
    */
-  router.post('/z-inspection/import', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Body: {
+      tenantId?: string;
+      aiSystemId?: string;
+      title?: string;
+      reportDate?: string;
+      inspectionTeam?: Array<{ name: string; role: string; organization?: string }>;
+      importMethod?: string;
+      sourceDocumentType?: string;
+      sourceDocumentUrl?: string;
+      content?: string;
+      createdBy?: string;
+    };
+  }>('/z-inspection/import', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const {
+      tenantId, aiSystemId, title, reportDate, inspectionTeam,
+      importMethod, sourceDocumentType, sourceDocumentUrl, content, createdBy
+    } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !aiSystemId || !title || !content) {
+      return sendError(reply, 'tenantId, aiSystemId, title, and content are required');
+    }
+
     try {
-      const { tenantId, aiSystemId, title, reportDate, inspectionTeam, importMethod, content, sourceDocumentType, sourceDocumentUrl, createdBy } = req.body;
-
-      if (!tenantId || !title || !importMethod || !content) {
-        res.status(400).json({ error: 'tenantId, title, importMethod, and content are required' });
-        return;
-      }
-
-      const report = await zInspectionService.importReport(tenantId, {
-        aiSystemId,
-        title,
-        reportDate: reportDate ? new Date(reportDate) : new Date(),
-        inspectionTeam,
-        importMethod,
-        content,
-        sourceDocumentType,
-        sourceDocumentUrl
-      }, createdBy);
-
-      res.status(201).json(report);
+      const report = await getZInspectionService().importReport(
+        effectiveTenantId,
+        {
+          aiSystemId,
+          title,
+          reportDate: reportDate ? new Date(reportDate) : new Date(),
+          inspectionTeam,
+          importMethod: (importMethod || 'manual_entry') as any,
+          sourceDocumentType: sourceDocumentType as any,
+          sourceDocumentUrl,
+          content
+        },
+        createdBy
+      );
+      return sendCreated(reply, report);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'importZInspectionReport', tenantId: effectiveTenantId, aiSystemId });
     }
   });
 
   /**
    * Get Z-Inspection report by ID
-   * GET /api/v1/compliance/z-inspection/reports/:id
+   * GET /z-inspection/reports/:id
    */
-  router.get('/z-inspection/reports/:id', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { tenantId?: string };
+  }>('/z-inspection/reports/:id', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId query parameter is required');
+    }
+
     try {
-      const { tenantId } = req.query;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
-      }
-
-      const report = await zInspectionService.getReport(tenantId as string, req.params.id);
+      const report = await getZInspectionService().getReport(effectiveTenantId, id);
 
       if (!report) {
-        res.status(404).json({ error: 'Report not found' });
-        return;
+        return sendNotFound(reply, 'Report', id);
       }
 
-      res.json(report);
+      return sendSuccess(reply, report);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'getZInspectionReport', tenantId: effectiveTenantId, reportId: id });
     }
   });
 
   /**
    * List Z-Inspection reports
-   * GET /api/v1/compliance/z-inspection/reports
+   * GET /z-inspection/reports
    */
-  router.get('/z-inspection/reports', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.get<{
+    Querystring: {
+      tenantId?: string;
+      aiSystemId?: string;
+      status?: string;
+      page?: string;
+      limit?: string;
+    };
+  }>('/z-inspection/reports', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { tenantId, aiSystemId, status, page, limit } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default' || !aiSystemId) {
+      return sendError(reply, 'tenantId and aiSystemId query parameters are required');
+    }
+
     try {
-      const { tenantId, aiSystemId, status, limit, offset } = req.query;
-
-      if (!tenantId || !aiSystemId) {
-        res.status(400).json({ error: 'tenantId and aiSystemId query parameters are required' });
-        return;
-      }
-
-      const result = await zInspectionService.listReports(
-        tenantId as string,
-        aiSystemId as string,
-        { status: status as any },
+      const reports = await getZInspectionService().listReports(
+        effectiveTenantId,
+        aiSystemId,
         {
-          page: offset ? Math.floor(parseInt(offset as string, 10) / (parseInt(limit as string, 10) || 20)) + 1 : 1,
-          limit: limit ? parseInt(limit as string, 10) : 20
+          status: status as any
+        },
+        {
+          page: page ? parseInt(page, 10) : 1,
+          limit: limit ? parseInt(limit, 10) : 20
         }
       );
 
-      res.json(result);
+      return sendSuccess(reply, reports);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'listZInspectionReports', tenantId: effectiveTenantId, aiSystemId });
     }
   });
 
   /**
    * Process Z-Inspection report
-   * POST /api/v1/compliance/z-inspection/reports/:id/process
+   * POST /z-inspection/reports/:id/process
    */
-  router.post('/z-inspection/reports/:id/process', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Params: { id: string };
+    Body: { tenantId?: string };
+  }>('/z-inspection/reports/:id/process', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId is required');
+    }
+
     try {
-      const { tenantId } = req.body;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId is required' });
-        return;
-      }
-
-      const processedReport = await zInspectionService.processReport(tenantId, req.params.id);
-
-      if (!processedReport) {
-        res.status(404).json({ error: 'Report not found' });
-        return;
-      }
-
-      res.json(processedReport);
+      const result = await getZInspectionService().processReport(effectiveTenantId, id);
+      return sendSuccess(reply, result);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'processZInspectionReport', tenantId: effectiveTenantId, reportId: id });
     }
   });
 
   /**
    * Create assessment from Z-Inspection report
-   * POST /api/v1/compliance/z-inspection/reports/:id/create-assessment
+   * POST /z-inspection/reports/:id/create-assessment
    */
-  router.post('/z-inspection/reports/:id/create-assessment', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  fastify.post<{
+    Params: { id: string };
+    Body: {
+      tenantId?: string;
+      assessmentTitle?: string;
+      createdBy?: string;
+    };
+  }>('/z-inspection/reports/:id/create-assessment', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId, assessmentTitle, createdBy } = request.body || {};
+    const effectiveTenantId = tenantId || ctx.tenantId;
+
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId is required');
+    }
+
     try {
-      const { tenantId, assessmentTitle, createdBy } = req.body;
-
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId is required' });
-        return;
-      }
-
-      const result = await zInspectionService.createAssessmentFromReport(
-        tenantId,
-        req.params.id,
-        assessmentTitle,
-        createdBy
-      );
-
-      if (!result) {
-        res.status(404).json({ error: 'Report not found' });
-        return;
-      }
-
-      res.status(201).json(result);
+      const result = await getZInspectionService().createAssessmentFromReport(effectiveTenantId, id, assessmentTitle, createdBy);
+      return sendCreated(reply, result);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'createAssessmentFromZInspection', tenantId: effectiveTenantId, reportId: id });
     }
   });
 
   /**
-   * Get monitoring rules from Z-Inspection report
-   * GET /api/v1/compliance/z-inspection/reports/:id/monitoring-rules
+   * Delete Z-Inspection report
+   * DELETE /z-inspection/reports/:id
    */
-  router.get('/z-inspection/reports/:id/monitoring-rules', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { tenantId } = req.query;
+  fastify.delete<{
+    Params: { id: string };
+    Querystring: { tenantId?: string };
+  }>('/z-inspection/reports/:id', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
 
-      if (!tenantId) {
-        res.status(400).json({ error: 'tenantId query parameter is required' });
-        return;
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId query parameter is required');
+    }
+
+    try {
+      const deleted = await getZInspectionService().deleteReport(effectiveTenantId, id);
+
+      if (!deleted) {
+        return sendNotFound(reply, 'Report', id);
       }
 
-      const rules = await zInspectionService.generateMonitoringRules(tenantId as string, req.params.id);
-      res.json(rules);
+      return sendSuccess(reply, { deleted: true });
     } catch (error) {
-      next(error);
-    }
-  });
-
-  // ==========================================================================
-  // Trustworthy AI Requirements
-  // ==========================================================================
-
-  /**
-   * List 7 trustworthy AI requirements
-   * GET /api/v1/compliance/requirements
-   */
-  router.get('/requirements', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const result = await pool.query(
-        `SELECT id, name, description, assessment_criteria, key_indicators
-         FROM trustworthy_ai_requirements
-         ORDER BY id`
-      );
-
-      res.json(result.rows);
-    } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'deleteZInspectionReport', tenantId: effectiveTenantId, reportId: id });
     }
   });
 
   /**
-   * Get requirement with mapped controls
-   * GET /api/v1/compliance/requirements/:id/controls
+   * Generate monitoring rules from Z-Inspection report
+   * GET /z-inspection/reports/:id/monitoring-rules
    */
-  router.get('/requirements/:id/controls', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const result = await pool.query(
-        `SELECT
-          rcm.control_id,
-          rcm.mapping_strength,
-          rcm.mapping_rationale,
-          c.title as control_title,
-          c.description as control_description,
-          c.framework_id,
-          f.name as framework_name
-         FROM requirement_control_mappings rcm
-         JOIN compliance_controls c ON rcm.control_id = c.id
-         JOIN compliance_frameworks f ON c.framework_id = f.id
-         WHERE rcm.requirement_id = $1
-         AND c.is_active = true
-         ORDER BY f.name, rcm.mapping_strength DESC`,
-        [req.params.id]
-      );
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { tenantId?: string };
+  }>('/z-inspection/reports/:id/monitoring-rules', async (request, reply: FastifyReply) => {
+    const ctx = getContext(request);
+    const { id } = request.params;
+    const { tenantId } = request.query;
+    const effectiveTenantId = tenantId || ctx.tenantId;
 
-      res.json(result.rows);
+    if (!effectiveTenantId || effectiveTenantId === 'default') {
+      return sendError(reply, 'tenantId query parameter is required');
+    }
+
+    try {
+      const rules = await getZInspectionService().generateMonitoringRules(effectiveTenantId, id);
+      return sendSuccess(reply, rules);
     } catch (error) {
-      next(error);
+      return handleRouteError(error, reply, { operation: 'generateMonitoringRules', tenantId: effectiveTenantId, reportId: id });
     }
   });
-
-  return router;
 }
