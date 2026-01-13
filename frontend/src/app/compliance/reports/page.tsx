@@ -31,10 +31,9 @@ import { cn } from '@/lib/utils'
 import { PageHeader } from '@/components/compliance'
 import { StatCard, StatGrid } from '@/components/coinest/StatCard'
 import { complianceApi } from '@/lib/compliance-api'
+import type { ComplianceReport, ReportType } from '@/types/compliance'
 
-// Report types
-type ReportType = 'executive_summary' | 'full_audit' | 'gap_analysis' | 'remediation_plan' | 'board_presentation'
-
+// Report types for filtering
 const REPORT_TYPES: ReportType[] = [
   'executive_summary',
   'full_audit',
@@ -59,39 +58,48 @@ const REPORT_TYPE_ICONS: Record<ReportType, typeof FileText> = {
   board_presentation: FileSpreadsheet,
 }
 
-// Report status
-type ReportStatus = 'generating' | 'ready' | 'failed' | 'scheduled'
+// Display status type (maps from API status)
+type DisplayStatus = 'generating' | 'ready' | 'failed' | 'pending'
 
-const STATUS_COLORS: Record<ReportStatus, string> = {
+function mapApiStatusToDisplay(status: ComplianceReport['status']): DisplayStatus {
+  switch (status) {
+    case 'completed':
+      return 'ready'
+    case 'generating':
+      return 'generating'
+    case 'failed':
+      return 'failed'
+    case 'pending':
+      return 'pending'
+    default:
+      return 'pending'
+  }
+}
+
+const STATUS_COLORS: Record<DisplayStatus, string> = {
   generating: 'bg-blue-500/20 text-blue-400',
   ready: 'bg-green-500/20 text-green-400',
   failed: 'bg-red-500/20 text-red-400',
-  scheduled: 'bg-yellow-500/20 text-yellow-400',
+  pending: 'bg-yellow-500/20 text-yellow-400',
 }
 
-// Report interface
-interface Report {
-  id: string
-  title: string
-  type: ReportType
-  framework?: string
-  status: ReportStatus
-  format: 'pdf' | 'html' | 'markdown' | 'json'
-  createdAt: string
-  fileSize?: number
-  downloadCount: number
+const STATUS_LABELS: Record<DisplayStatus, string> = {
+  generating: 'Generating',
+  ready: 'Ready',
+  failed: 'Failed',
+  pending: 'Pending',
 }
 
 export default function ReportsPage() {
   const tc = useThemeClasses()
 
-  // State
-  const [reports, setReports] = useState<Report[]>([])
+  // State - using ComplianceReport type from API
+  const [reports, setReports] = useState<ComplianceReport[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<ReportType | 'all'>('all')
-  const [statusFilter, setStatusFilter] = useState<ReportStatus | 'all'>('all')
+  const [statusFilter, setStatusFilter] = useState<DisplayStatus | 'all'>('all')
 
   // Fetch reports from API
   useEffect(() => {
@@ -101,7 +109,7 @@ export default function ReportsPage() {
       try {
         const response = await complianceApi.listReports()
         if (response.success && response.data) {
-          setReports(response.data.data as unknown as Report[])
+          setReports(response.data.data)
         } else {
           const errorMsg = typeof response.error === 'string'
             ? response.error
@@ -124,23 +132,23 @@ export default function ReportsPage() {
     if (searchQuery && !report.title.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false
     }
-    if (typeFilter !== 'all' && report.type !== typeFilter) {
+    if (typeFilter !== 'all' && report.reportType !== typeFilter) {
       return false
     }
-    if (statusFilter !== 'all' && report.status !== statusFilter) {
+    if (statusFilter !== 'all' && mapApiStatusToDisplay(report.status) !== statusFilter) {
       return false
     }
     return true
   })
 
-  // Stats
+  // Stats - map API status to display status for counting
   const totalReports = reports.length
-  const readyReports = reports.filter((r) => r.status === 'ready').length
-  const generatingReports = reports.filter((r) => r.status === 'generating').length
-  const scheduledReports = reports.filter((r) => r.status === 'scheduled').length
+  const readyReports = reports.filter((r) => mapApiStatusToDisplay(r.status) === 'ready').length
+  const generatingReports = reports.filter((r) => mapApiStatusToDisplay(r.status) === 'generating').length
+  const pendingReports = reports.filter((r) => mapApiStatusToDisplay(r.status) === 'pending').length
 
   // Format file size
-  const formatFileSize = (bytes?: number) => {
+  const formatFileSize = (bytes: number | null) => {
     if (!bytes) return '-'
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -263,13 +271,13 @@ export default function ReportsPage() {
           <div className="relative">
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as ReportStatus | 'all')}
+              onChange={(e) => setStatusFilter(e.target.value as DisplayStatus | 'all')}
               className={cn('pl-4 pr-8 py-2 rounded-lg border appearance-none', tc.input)}
             >
               <option value="all">All Status</option>
               <option value="ready">Ready</option>
               <option value="generating">Generating</option>
-              <option value="scheduled">Scheduled</option>
+              <option value="pending">Pending</option>
               <option value="failed">Failed</option>
             </select>
             <ChevronDown className={cn('absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none', tc.textMuted)} />
@@ -307,8 +315,8 @@ export default function ReportsPage() {
           variant="cyan"
         />
         <StatCard
-          title="Scheduled"
-          value={scheduledReports}
+          title="Pending"
+          value={pendingReports}
           icon={<Calendar className="h-5 w-5" />}
           variant="warning"
         />
@@ -336,7 +344,8 @@ export default function ReportsPage() {
         ) : (
           <div className={cn('divide-y', tc.border)}>
             {filteredReports.map((report) => {
-              const Icon = REPORT_TYPE_ICONS[report.type]
+              const displayStatus = mapApiStatusToDisplay(report.status)
+              const Icon = REPORT_TYPE_ICONS[report.reportType] || FileText
               return (
                 <div key={report.id} className={cn('p-4 flex items-center gap-4', tc.tableRow)}>
                   {/* Icon */}
@@ -348,19 +357,18 @@ export default function ReportsPage() {
                   <div className="flex-1 min-w-0">
                     <p className={cn('font-medium truncate', tc.textPrimary)}>{report.title}</p>
                     <p className={cn('text-xs', tc.textMuted)}>
-                      {REPORT_TYPE_LABELS[report.type]}
-                      {report.framework && ` • ${report.framework}`}
+                      {REPORT_TYPE_LABELS[report.reportType] || report.reportType}
                       {' • '}
                       {formatDate(report.createdAt)}
                     </p>
                   </div>
 
                   {/* Status */}
-                  <span className={cn('px-2 py-0.5 rounded text-xs font-medium', STATUS_COLORS[report.status])}>
-                    {report.status === 'generating' && (
+                  <span className={cn('px-2 py-0.5 rounded text-xs font-medium', STATUS_COLORS[displayStatus])}>
+                    {displayStatus === 'generating' && (
                       <Loader2 className="inline h-3 w-3 mr-1 animate-spin" />
                     )}
-                    {report.status.charAt(0).toUpperCase() + report.status.slice(1)}
+                    {STATUS_LABELS[displayStatus]}
                   </span>
 
                   {/* Size */}
@@ -370,7 +378,7 @@ export default function ReportsPage() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1">
-                    {report.status === 'ready' && (
+                    {displayStatus === 'ready' && (
                       <>
                         <button className={cn('p-1.5 rounded', tc.buttonGhost)} title="View">
                           <Eye className="h-4 w-4" />
@@ -387,7 +395,7 @@ export default function ReportsPage() {
                         </button>
                       </>
                     )}
-                    {report.status === 'failed' && (
+                    {displayStatus === 'failed' && (
                       <button className={cn('p-1.5 rounded', tc.buttonGhost)} title="Regenerate">
                         <RefreshCw className="h-4 w-4" />
                       </button>
