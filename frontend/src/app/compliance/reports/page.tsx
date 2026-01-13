@@ -109,7 +109,13 @@ export default function ReportsPage() {
       try {
         const response = await complianceApi.listReports()
         if (response.success && response.data) {
-          setReports(response.data.data)
+          // Handle both API response formats:
+          // 1. {success: true, data: [...]} - direct array
+          // 2. {success: true, data: {data: [...], total: N}} - wrapped array
+          const reportsData = Array.isArray(response.data)
+            ? response.data
+            : response.data.data || []
+          setReports(reportsData as ComplianceReport[])
         } else {
           const errorMsg = typeof response.error === 'string'
             ? response.error
