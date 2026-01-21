@@ -1,0 +1,504 @@
+{
+  "$schema": "https://nexus.adverant.ai/schemas/plugin-manifest-v1.json",
+  "manifest_version": "1.0.0",
+  "plugin": {
+    "id": "nexus-compliance",
+    "name": "Nexus Compliance Engine",
+    "display_name": "Compliance Engine",
+    "description": "Enterprise compliance assessment plugin with Z-Inspection aligned qualitative assessment methodology, supporting 688+ controls across 6 regulatory frameworks (ISO 27001, GDPR, EU AI Act, NIS2, SOC 2, ISO 27701).",
+    "version": "1.0.0",
+    "license": "UNLICENSED",
+    "author": {
+      "name": "Adverant",
+      "email": "support@adverant.ai",
+      "url": "https://adverant.ai"
+    },
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/adverant/Adverant-Nexus-Compliance-Plugin"
+    },
+    "homepage": "https://adverant.ai/products/compliance-engine",
+    "category": "compliance",
+    "tags": [
+      "compliance",
+      "regulatory",
+      "ai-governance",
+      "gdpr",
+      "eu-ai-act",
+      "iso-27001",
+      "nis2",
+      "soc2",
+      "z-inspection",
+      "trustworthy-ai",
+      "risk-management"
+    ],
+    "keywords": [
+      "compliance management",
+      "regulatory compliance",
+      "AI governance",
+      "GDPR compliance",
+      "EU AI Act",
+      "ISO 27001",
+      "NIS2 directive",
+      "SOC 2",
+      "Z-Inspection",
+      "trustworthiness assessment",
+      "ethical AI",
+      "risk assessment"
+    ]
+  },
+  "runtime": {
+    "node_version": ">=20.0.0",
+    "architecture": ["amd64", "arm64"]
+  },
+  "backend": {
+    "entry_point": "backend/dist/index.js",
+    "port": 3458,
+    "health_endpoint": "/health",
+    "api_prefix": "/api/v1/plugins/compliance",
+    "framework": "fastify",
+    "framework_version": "5.x"
+  },
+  "frontend": {
+    "entry_point": "frontend/.next",
+    "framework": "nextjs",
+    "framework_version": "14.x",
+    "mount_path": "/compliance",
+    "assets_path": "/compliance/_next"
+  },
+  "database": {
+    "type": "postgresql",
+    "required": true,
+    "min_version": "14",
+    "migrations_path": "backend/src/database/migrations",
+    "seed_path": "backend/src/database/seed"
+  },
+  "dependencies": {
+    "nexus_core": {
+      "min_version": "1.0.0",
+      "required": true
+    },
+    "nexus_mageagent": {
+      "min_version": "1.0.0",
+      "required": false,
+      "features": ["ai_assessment", "z_inspection_parsing", "tension_identification"]
+    },
+    "nexus_graphrag": {
+      "min_version": "1.0.0",
+      "required": false,
+      "features": ["knowledge_retrieval", "compliance_insights"]
+    }
+  },
+  "capabilities": {
+    "frameworks": {
+      "supported": [
+        {
+          "id": "iso_27001",
+          "name": "ISO/IEC 27001:2022",
+          "control_count": 93,
+          "jurisdiction": "global",
+          "category": "security"
+        },
+        {
+          "id": "gdpr",
+          "name": "GDPR",
+          "control_count": 220,
+          "jurisdiction": "eu",
+          "category": "privacy"
+        },
+        {
+          "id": "eu_ai_act",
+          "name": "EU AI Act",
+          "control_count": 149,
+          "jurisdiction": "eu",
+          "category": "ai_governance"
+        },
+        {
+          "id": "nis2",
+          "name": "NIS2 Directive",
+          "control_count": 112,
+          "jurisdiction": "eu",
+          "category": "cybersecurity"
+        },
+        {
+          "id": "soc2",
+          "name": "SOC 2",
+          "control_count": 64,
+          "jurisdiction": "us",
+          "category": "security"
+        },
+        {
+          "id": "iso_27701",
+          "name": "ISO/IEC 27701:2019",
+          "control_count": 50,
+          "jurisdiction": "global",
+          "category": "privacy"
+        }
+      ],
+      "total_controls": 688
+    },
+    "trustworthy_ai_requirements": [
+      "human_agency_oversight",
+      "technical_robustness_safety",
+      "privacy_data_governance",
+      "transparency",
+      "diversity_fairness_nondiscrimination",
+      "societal_environmental_wellbeing",
+      "accountability"
+    ],
+    "report_types": [
+      "executive_summary",
+      "full_audit",
+      "gap_analysis",
+      "remediation_plan",
+      "board_presentation"
+    ],
+    "report_formats": ["pdf", "html", "markdown", "json"],
+    "z_inspection_import_methods": ["manual", "json_import", "xml_import", "ai_parsed"],
+    "evidence_types": [
+      "document",
+      "screenshot",
+      "policy",
+      "procedure",
+      "interview",
+      "test_result",
+      "audit_log",
+      "config_export",
+      "attestation"
+    ]
+  },
+  "api": {
+    "version": "v1",
+    "authentication": {
+      "methods": ["api_key", "jwt"],
+      "header": "Authorization"
+    },
+    "rate_limits": {
+      "read_operations": "1000/minute",
+      "write_operations": "100/minute",
+      "report_generation": "10/minute",
+      "ai_operations": "20/minute"
+    },
+    "endpoints": {
+      "frameworks": {
+        "list": "GET /frameworks",
+        "get": "GET /frameworks/:id",
+        "controls": "GET /frameworks/:id/controls"
+      },
+      "controls": {
+        "get": "GET /controls/:id",
+        "guidance": "GET /controls/:id/guidance"
+      },
+      "assessments": {
+        "list": "GET /assessments",
+        "create": "POST /assessments",
+        "get": "GET /assessments/:id",
+        "run": "POST /assessments/:id/run",
+        "findings": "GET /assessments/:id/findings"
+      },
+      "reports": {
+        "generate": "POST /reports/generate",
+        "list": "GET /reports",
+        "get": "GET /reports/:id"
+      },
+      "ai_systems": {
+        "list": "GET /ai-systems",
+        "create": "POST /ai-systems",
+        "get": "GET /ai-systems/:id",
+        "classify": "POST /ai-systems/:id/classify"
+      },
+      "qualitative": {
+        "z_inspection_import": "POST /qualitative/z-inspection/import",
+        "tensions_list": "GET /qualitative/tensions",
+        "tensions_create": "POST /qualitative/tensions",
+        "tensions_resolve": "POST /qualitative/tensions/:id/resolve",
+        "stakeholders": "GET /qualitative/stakeholders",
+        "scenarios": "GET /qualitative/scenarios"
+      },
+      "analysis": {
+        "cross_framework_matrix": "GET /analysis/cross-framework/matrix",
+        "gaps": "GET /analysis/cross-framework/gaps",
+        "coverage": "GET /analysis/cross-framework/coverage"
+      },
+      "monitoring": {
+        "dashboard": "GET /monitoring/dashboard",
+        "alerts": "GET /monitoring/alerts",
+        "acknowledge": "POST /monitoring/alerts/:id/acknowledge"
+      },
+      "health": {
+        "check": "GET /health"
+      }
+    }
+  },
+  "ui": {
+    "navigation": [
+      {
+        "id": "dashboard",
+        "label": "Dashboard",
+        "path": "/compliance",
+        "icon": "shield-check"
+      },
+      {
+        "id": "controls",
+        "label": "Control Library",
+        "path": "/compliance/controls",
+        "icon": "list-checks"
+      },
+      {
+        "id": "cross-framework",
+        "label": "Cross-Framework",
+        "path": "/compliance/cross-framework",
+        "icon": "git-branch"
+      },
+      {
+        "id": "trustworthiness",
+        "label": "Trustworthiness",
+        "path": "/compliance/trustworthiness",
+        "icon": "shield"
+      },
+      {
+        "id": "tensions",
+        "label": "Ethical Tensions",
+        "path": "/compliance/tensions",
+        "icon": "scale"
+      },
+      {
+        "id": "z-inspection",
+        "label": "Z-Inspection",
+        "path": "/compliance/z-inspection",
+        "icon": "file-search"
+      },
+      {
+        "id": "regulatory",
+        "label": "Regulatory Updates",
+        "path": "/compliance/regulatory",
+        "icon": "newspaper"
+      },
+      {
+        "id": "assessments",
+        "label": "Assessments",
+        "path": "/compliance/assessments",
+        "icon": "clipboard-check"
+      },
+      {
+        "id": "reports",
+        "label": "Reports",
+        "path": "/compliance/reports",
+        "icon": "file-text"
+      },
+      {
+        "id": "settings",
+        "label": "Settings",
+        "path": "/compliance/settings",
+        "icon": "settings"
+      }
+    ],
+    "dashboard_widgets": [
+      {
+        "id": "kpi-grid",
+        "type": "stat_grid",
+        "metrics": ["overall_score", "controls_implemented", "critical_gaps", "upcoming_deadlines"]
+      },
+      {
+        "id": "framework-radar",
+        "type": "radar_chart",
+        "data_source": "framework_scores"
+      },
+      {
+        "id": "trustworthy-ai-radar",
+        "type": "radar_chart",
+        "data_source": "requirement_scores"
+      },
+      {
+        "id": "risk-distribution",
+        "type": "pie_chart",
+        "data_source": "risk_distribution"
+      },
+      {
+        "id": "recent-alerts",
+        "type": "alert_list",
+        "data_source": "recent_alerts"
+      }
+    ]
+  },
+  "permissions": {
+    "required": [
+      {
+        "permission": "tenant:read",
+        "description": "Read tenant information"
+      },
+      {
+        "permission": "tenant:write",
+        "description": "Update tenant compliance settings"
+      },
+      {
+        "permission": "ai-systems:read",
+        "description": "Read AI system registry"
+      },
+      {
+        "permission": "ai-systems:write",
+        "description": "Register and update AI systems"
+      },
+      {
+        "permission": "assessments:read",
+        "description": "View assessments and findings"
+      },
+      {
+        "permission": "assessments:write",
+        "description": "Create and run assessments"
+      },
+      {
+        "permission": "evidence:read",
+        "description": "View uploaded evidence"
+      },
+      {
+        "permission": "evidence:write",
+        "description": "Upload and manage evidence"
+      }
+    ]
+  },
+  "pricing": {
+    "model": "freemium",
+    "tiers": [
+      {
+        "id": "starter",
+        "name": "Starter",
+        "price": {
+          "amount": 499,
+          "currency": "USD",
+          "interval": "month"
+        },
+        "features": [
+          "3 frameworks",
+          "100 controls",
+          "Basic reporting",
+          "Email support"
+        ],
+        "limits": {
+          "frameworks": 3,
+          "controls": 100,
+          "assessments_per_month": 5,
+          "reports_per_month": 10
+        }
+      },
+      {
+        "id": "professional",
+        "name": "Professional",
+        "price": {
+          "amount": 1499,
+          "currency": "USD",
+          "interval": "month"
+        },
+        "features": [
+          "All 6 frameworks",
+          "688+ controls",
+          "Cross-framework analysis",
+          "Z-Inspection integration",
+          "AI-powered assessments",
+          "Priority support"
+        ],
+        "limits": {
+          "frameworks": 6,
+          "controls": 688,
+          "assessments_per_month": -1,
+          "reports_per_month": -1
+        }
+      },
+      {
+        "id": "enterprise",
+        "name": "Enterprise",
+        "price": {
+          "amount": null,
+          "currency": "USD",
+          "interval": "year",
+          "contact_sales": true
+        },
+        "features": [
+          "All Professional features",
+          "Custom frameworks",
+          "Dedicated support",
+          "SLA guarantee",
+          "On-premise deployment option",
+          "Custom integrations",
+          "Advanced analytics"
+        ],
+        "limits": {
+          "frameworks": -1,
+          "controls": -1,
+          "assessments_per_month": -1,
+          "reports_per_month": -1
+        }
+      }
+    ]
+  },
+  "configuration": {
+    "environment_variables": [
+      {
+        "name": "DATABASE_URL",
+        "required": true,
+        "description": "PostgreSQL connection string"
+      },
+      {
+        "name": "NEXUS_API_URL",
+        "required": true,
+        "description": "Nexus platform API URL"
+      },
+      {
+        "name": "NEXUS_API_KEY",
+        "required": true,
+        "description": "Nexus platform API key"
+      },
+      {
+        "name": "MAGEAGENT_URL",
+        "required": false,
+        "description": "MageAgent service URL for AI features"
+      },
+      {
+        "name": "MAGEAGENT_ENABLED",
+        "required": false,
+        "default": "true",
+        "description": "Enable MageAgent AI features"
+      },
+      {
+        "name": "PORT",
+        "required": false,
+        "default": "3458",
+        "description": "Backend server port"
+      },
+      {
+        "name": "HOST",
+        "required": false,
+        "default": "0.0.0.0",
+        "description": "Backend server host"
+      },
+      {
+        "name": "NODE_ENV",
+        "required": false,
+        "default": "production",
+        "description": "Node environment"
+      },
+      {
+        "name": "LOG_LEVEL",
+        "required": false,
+        "default": "info",
+        "description": "Logging level (debug, info, warn, error)"
+      }
+    ]
+  },
+  "scripts": {
+    "install": "npm install",
+    "build": "npm run build",
+    "start": "cd backend && npm start",
+    "dev": "npm run dev",
+    "migrate": "cd backend && npm run migrate",
+    "seed": "cd backend && npm run seed",
+    "test": "npm test",
+    "typecheck": "npm run typecheck",
+    "lint": "npm run lint"
+  },
+  "support": {
+    "documentation_url": "https://docs.adverant.ai/plugins/compliance-engine",
+    "support_email": "support@adverant.ai",
+    "issues_url": "https://github.com/adverant/Adverant-Nexus-Compliance-Plugin/issues"
+  }
+}
