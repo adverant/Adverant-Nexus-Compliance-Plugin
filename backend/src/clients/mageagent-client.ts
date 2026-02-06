@@ -241,7 +241,7 @@ export class MageAgentClient {
     options: QueryOptions
   ): Promise<MageAgentResponse> {
     const {
-      model = 'claude-sonnet-4-20250514',
+      model = 'claude-opus-4-6-20260206',
       temperature = 0.3,
       maxTokens = 4096,
       systemPrompt,

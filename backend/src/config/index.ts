@@ -28,7 +28,7 @@ const envSchema = z.object({
 
   // AI Configuration
   ANTHROPIC_API_KEY: z.string().optional(),
-  AI_MODEL: z.string().default('claude-sonnet-4-20250514'),
+  AI_MODEL: z.string().default('claude-opus-4-6-20260206'),
   AI_MAX_TOKENS: z.string().default('4096'),
 
   // Plugin Metadata

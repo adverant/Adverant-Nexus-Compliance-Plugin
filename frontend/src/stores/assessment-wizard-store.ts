@@ -153,7 +153,7 @@ const initialFormData: WizardFormData = {
   },
   aiConfig: {
     useAI: true,
-    aiModel: 'claude-3-opus',
+    aiModel: 'anthropic/claude-opus-4.6',
     includeRecommendations: true,
     confidenceThreshold: 70,
   },

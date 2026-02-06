@@ -105,8 +105,8 @@ const FRAMEWORK_CONFIG: Record<FrameworkId, {
 
 // AI Model options
 const AI_MODELS = [
-  { id: 'claude-3-opus', name: 'Claude 3 Opus', description: 'Highest capability for complex assessments' },
-  { id: 'claude-3-sonnet', name: 'Claude 3 Sonnet', description: 'Balanced performance and speed' },
+  { id: 'anthropic/claude-opus-4.6', name: 'Claude Opus 4.6', description: 'Highest capability for complex assessments' },
+  { id: 'claude-opus-4-6-20260206', name: 'Claude Opus 4.6', description: 'Balanced performance and speed' },
   { id: 'claude-3-haiku', name: 'Claude 3 Haiku', description: 'Fast assessments for quick reviews' },
   { id: 'gpt-4', name: 'GPT-4', description: 'OpenAI GPT-4 model' },
 ]
